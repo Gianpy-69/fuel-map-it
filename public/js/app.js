@@ -23,6 +23,109 @@ function getBrandPhoto(bandiera) {
     return BRAND_PHOTOS.default;
 }
 
+// ============================================
+// Controller Dynamic Island (Apple Live Activity)
+// ============================================
+const DynamicIsland = {
+    el: null,
+    timer: null,
+    currentAction: null,
+
+    init() {
+        this.el = document.getElementById('dynamicIsland');
+        if (!this.el) return;
+        this.el.addEventListener('click', () => {
+            if (typeof this.currentAction === 'function') {
+                this.currentAction();
+            }
+        });
+    },
+
+    show({ icon = '⛽', title, subtitle = '', badge = '', dot = true, duration = 4000, onClick = null, type = 'normal' }) {
+        if (!this.el) return;
+        clearTimeout(this.timer);
+
+        const iconEl = document.getElementById('islandIcon');
+        const dotEl = document.getElementById('islandPulseDot');
+        const titleEl = document.getElementById('islandTitle');
+        const subEl = document.getElementById('islandSubtitle');
+        const badgeEl = document.getElementById('islandBadge');
+
+        if (iconEl) iconEl.textContent = icon;
+        if (titleEl) titleEl.textContent = title;
+        if (subEl) {
+            subEl.textContent = subtitle;
+            subEl.classList.toggle('hidden', !subtitle);
+        }
+        if (badgeEl) {
+            badgeEl.textContent = badge;
+            badgeEl.classList.toggle('hidden', !badge);
+        }
+        if (dotEl) dotEl.style.display = dot ? '' : 'none';
+
+        this.currentAction = onClick;
+
+        this.el.className = 'dynamic-island';
+        if (type) this.el.classList.add(`island-${type}`);
+        this.el.classList.add('island-active');
+
+        if (duration > 0) {
+            this.timer = setTimeout(() => this.hide(), duration);
+        }
+    },
+
+    showDeal(station, distText, isCheapest = false) {
+        const carb = App.activeFilters.carburante || 'benzina';
+        const price = station[`prezzo_${carb}`] || station.prezzo_benzina || station.prezzo_diesel;
+        const priceFormatted = price ? `€ ${parseFloat(price).toFixed(3)}` : 'OFFERTA';
+        const brand = station.bandiera || station.nome || 'Distributore';
+
+        this.show({
+            icon: isCheapest ? '👑' : '⛽',
+            title: brand,
+            subtitle: `${isCheapest ? 'Miglior Prezzo' : 'Prezzo Top'} • ${distText}`,
+            badge: priceFormatted,
+            type: isCheapest ? 'cheapest' : 'deal',
+            duration: 8500,
+            onClick: () => {
+                App.openStationById(station.id);
+            }
+        });
+    },
+
+    showPitStop(station, kmProgress) {
+        this.show({
+            icon: '🎯',
+            title: `Sosta tra ${Math.round(kmProgress)} km`,
+            subtitle: station.bandiera || station.nome || 'Rifornimento sicuro',
+            badge: station.prezzo_benzina ? `€ ${parseFloat(station.prezzo_benzina).toFixed(3)}` : 'TAPPA',
+            type: 'pitstop',
+            duration: 9000,
+            onClick: () => {
+                App.openStationById(station.id);
+            }
+        });
+    },
+
+    showStatus(text, icon = '📍', duration = 3000) {
+        this.show({
+            icon,
+            title: text,
+            subtitle: '',
+            badge: '',
+            dot: false,
+            duration,
+            type: 'compact'
+        });
+    },
+
+    hide() {
+        if (!this.el) return;
+        this.el.classList.remove('island-active');
+        this.currentAction = null;
+    }
+};
+
 const App = {
     currentDistributore: null,
     currentLat: 41.9028,
@@ -56,6 +159,7 @@ const App = {
     moveDebounceTimer: null,
 
     init() {
+        DynamicIsland.init();
         FuelMap.init();
         this.bindEvents();
         this.locateUser();
@@ -572,6 +676,13 @@ const App = {
 
             btnClear.classList.remove('hidden');
             routeModal.classList.add('hidden');
+
+            // Notifica visiva su Dynamic Island stile Apple
+            if (needsRefuel && recommendedPitStop) {
+                DynamicIsland.showPitStop(recommendedPitStop, recommendedPitStop.progressioneKm);
+            } else if (cheapestStation) {
+                DynamicIsland.showDeal(cheapestStation, `Al km ${Math.round(cheapestStation.progressioneKm || 0)}`, true);
+            }
 
             // 8. Apri subito la sosta consigliata se necessaria per autonomia, oppure la più economica
             const bestToOpen = (needsRefuel && recommendedPitStop) ? recommendedPitStop : (cheapestStation || stations[0]);
@@ -1350,6 +1461,8 @@ const App = {
             badge: '/icon.svg',
             tag: 'radar-welcome'
         };
+        DynamicIsland.showStatus('Radar Prezzi Attivo 🔔', '⛽', 4000);
+
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             navigator.serviceWorker.ready.then(reg => reg.showNotification(title, options));
         } else {
@@ -1445,6 +1558,9 @@ const App = {
                 url: `/?station=${stazione.id}`
             }
         };
+
+        // Espandi la Dynamic Island in tempo reale sullo schermo
+        DynamicIsland.showDeal(stazione, distKmText, isCheapest);
 
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             navigator.serviceWorker.ready.then(reg => {
@@ -1622,10 +1738,13 @@ const App = {
 
     // --- Utilità ---
     updatePill(text, showDot = true) {
+        DynamicIsland.showStatus(text, showDot ? '🔍' : '📍', 3200);
         const pill = document.getElementById('statusPill');
-        pill.classList.remove('hidden');
-        pill.querySelector('.pill-text').textContent = text;
-        pill.querySelector('.pill-dot').style.display = showDot ? '' : 'none';
+        if (pill) {
+            pill.classList.remove('hidden');
+            pill.querySelector('.pill-text').textContent = text;
+            pill.querySelector('.pill-dot').style.display = showDot ? '' : 'none';
+        }
     },
 
     showToast(text) {

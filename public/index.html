@@ -29,6 +29,26 @@
 </head>
 <body>
 
+    <!-- Apple-style Dynamic Island -->
+    <div class="dynamic-island" id="dynamicIsland" role="button" tabindex="0" title="Avviso rapido">
+        <div class="island-content">
+            <div class="island-icon-wrap" id="islandIconWrap">
+                <span class="island-icon" id="islandIcon">⛽</span>
+                <span class="island-pulse-dot" id="islandPulseDot"></span>
+            </div>
+            <div class="island-text-wrap" id="islandTextWrap">
+                <span class="island-title" id="islandTitle">Fuel Map</span>
+                <span class="island-subtitle hidden" id="islandSubtitle"></span>
+            </div>
+            <div class="island-action-wrap" id="islandActionWrap">
+                <span class="island-badge hidden" id="islandBadge"></span>
+                <svg class="island-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
     <!-- Mappa a tutto schermo -->
     <div id="map"></div>
 
