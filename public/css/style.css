@@ -1,0 +1,2394 @@
+/* ============================================
+   Fuel Map Italia — Design System
+   Base: 8px | Font: Inter | Accento: #0066FF
+   ============================================ */
+
+/* --- Reset & Base --- */
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.hidden {
+    display: none !important;
+}
+
+:root {
+    --bg:          #FAFAFA;
+    --text:        #1A1A2E;
+    --text-sec:    #6B7280;
+    --accent:      #0066FF;
+    --green:       #10B981;
+    --red:         #EF4444;
+    --amber:       #F59E0B;
+    --gray-100:    #F3F4F6;
+    --gray-200:    #E5E7EB;
+    --gray-300:    #D1D5DB;
+    --radius:      12px;
+    --radius-sm:   8px;
+    --shadow:      0 4px 24px rgba(0,0,0,0.08);
+    --shadow-lg:   0 -4px 32px rgba(0,0,0,0.12);
+}
+
+html, body {
+    height: 100%;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--bg);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* --- Mappa --- */
+#map {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: #E5E7EB;
+}
+
+body.dark-theme #map {
+    background: #0F172A;
+}
+
+/* Filtro Notturno Stradale ad altissima affidabilità (Zero tile 404, zero adblock, instant) */
+#map.map-dark-tiles .leaflet-tile-pane {
+    filter: invert(100%) hue-rotate(180deg) brightness(92%) contrast(90%);
+}
+
+/* --- Header di navigazione: ricerca + filtri --- */
+.top-nav {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none; /* Lascia cliccare la mappa sui bordi */
+}
+
+.search-bar {
+    display: flex;
+    gap: 8px;
+    pointer-events: auto;
+}
+
+.search-inner {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    height: 48px;
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.search-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--text-sec);
+    flex-shrink: 0;
+}
+
+.search-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.search-input::placeholder {
+    color: var(--text-sec);
+}
+
+.btn-clear-search {
+    background: none;
+    border: none;
+    color: var(--text-sec);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-clear-search.hidden {
+    display: none;
+}
+
+.btn-satellite {
+    width: 48px;
+    height: 48px;
+    border: none;
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    color: var(--text-sec);
+}
+
+.btn-satellite svg {
+    width: 22px;
+    height: 22px;
+}
+
+.btn-satellite.active {
+    background: var(--text);
+    color: white;
+}
+
+.btn-satellite:active {
+    transform: scale(0.96);
+}
+
+.btn-theme {
+    width: 48px;
+    height: 48px;
+    border: none;
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    color: var(--text-sec);
+}
+
+.btn-theme svg {
+    width: 20px;
+    height: 20px;
+}
+
+.btn-theme.active {
+    background: #1E293B;
+    color: #FACC15;
+}
+
+.btn-theme:active {
+    transform: scale(0.96);
+}
+
+/* --- Barra Filtri Compatta (Senza Scorrimento, 100% visibile) --- */
+.compact-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+    width: 100%;
+}
+
+/* Custom Dropdown Carburanti Flottante (Stile Waze / Google Maps) */
+.custom-dropdown-wrap {
+    position: relative;
+    flex: 1.1;
+    min-width: 110px;
+}
+
+.filter-pill-btn {
+    width: 100%;
+    height: 38px;
+    padding: 0 12px;
+    background: #FFFFFF;
+    border: 1px solid var(--gray-200);
+    border-radius: 100px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    transition: all 0.15s;
+    user-select: none;
+}
+
+.filter-pill-btn:hover {
+    border-color: #CBD5E1;
+}
+
+.filter-pill-btn:active {
+    transform: scale(0.97);
+}
+
+.filter-pill-btn.active-fuel {
+    border-color: #0066FF;
+    color: #0066FF;
+    background: #EFF6FF;
+}
+
+.active-fuel-dot {
+    font-size: 13px;
+    line-height: 1;
+}
+
+.dropdown-chevron {
+    width: 14px;
+    height: 14px;
+    color: var(--text-sec);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    flex-shrink: 0;
+}
+
+.custom-dropdown-wrap.open .dropdown-chevron {
+    transform: rotate(180deg);
+}
+
+.custom-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 195px;
+    background: #FFFFFF;
+    border: 1px solid var(--gray-200);
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+    padding: 6px;
+    z-index: 1005;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    animation: slideDownMenu 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideDownMenu {
+    from { opacity: 0; transform: translateY(-8px) scale(0.96); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+}
+
+.dropdown-item:hover {
+    background: #F3F4F6;
+}
+
+.dropdown-item.active {
+    background: #EFF6FF;
+    color: #0066FF;
+}
+
+.dropdown-item-label {
+    flex: 1;
+}
+
+.dropdown-check {
+    font-size: 12px;
+    font-weight: 800;
+    color: #0066FF;
+}
+
+.dropdown-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.dot-tutti   { font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
+.dot-benzina { background: #10B981; }
+.dot-diesel  { background: #1E293B; }
+.dot-gpl     { background: #0EA5E9; }
+.dot-metano  { background: #8B5CF6; }
+
+/* Dark Mode per Custom Dropdown */
+body.dark-theme .filter-pill-btn {
+    background: #1E293B;
+    border-color: #334155;
+    color: #F8FAFC;
+}
+
+body.dark-theme .filter-pill-btn.active-fuel {
+    background: #1E3A8A;
+    border-color: #3B82F6;
+    color: #93C5FD;
+}
+
+body.dark-theme .custom-dropdown-menu {
+    background: #1E293B;
+    border-color: #334155;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+}
+
+body.dark-theme .dropdown-item {
+    color: #F8FAFC;
+}
+
+body.dark-theme .dropdown-item:hover {
+    background: #0F172A;
+}
+
+body.dark-theme .dropdown-item.active {
+    background: #0F172A;
+    color: #60A5FA;
+}
+
+body.dark-theme .dropdown-check {
+    color: #60A5FA;
+}
+
+body.dark-theme .dot-diesel {
+    background: #64748B;
+}
+
+.compact-filter-bar .filter-chip {
+    flex-shrink: 0;
+    height: 38px;
+    padding: 0 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 100px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    color: var(--text-sec);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s;
+}
+
+.compact-filter-bar .filter-chip:active {
+    transform: scale(0.96);
+}
+
+.compact-filter-bar .filter-chip.active {
+    background: var(--text);
+    color: white;
+    border-color: var(--text);
+    font-weight: 700;
+}
+
+.compact-filter-bar .filter-chip-crown.active {
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    border-color: #B45309;
+    color: white;
+}
+
+body.dark-theme .fuel-select-pill {
+    background: #1E293B;
+    border-color: #334155;
+    color: #F8FAFC;
+}
+
+body.dark-theme .select-chevron {
+    color: #94A3B8;
+}
+
+body.dark-theme .compact-filter-bar .filter-chip {
+    background: #1E293B;
+    border-color: #334155;
+    color: #F8FAFC;
+}
+
+body.dark-theme .compact-filter-bar .filter-chip.active {
+    background: #3B82F6;
+    border-color: #3B82F6;
+    color: white;
+}
+
+/* Badge numerato sul FAB Preferiti */
+.fab-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: #F59E0B;
+    color: #FFFFFF;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 5px;
+    border-radius: 10px;
+    min-width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(245, 158, 11, 0.4);
+    border: 1.5px solid #FFFFFF;
+}
+
+body.dark-theme .fab-badge {
+    border-color: #0F172A;
+}
+
+.fab-btn.has-favorites svg {
+    fill: #F59E0B;
+    stroke: #D97706;
+    color: #F59E0B;
+}
+
+.filter-chip {
+    flex-shrink: 0;
+    padding: 7px 14px;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: 100px;
+    color: var(--text-sec);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.filter-chip:active {
+    transform: scale(0.96);
+}
+
+.filter-chip.active {
+    background: var(--text);
+    color: white;
+    border-color: var(--text);
+    font-weight: 600;
+}
+
+/* Chip Dorato Più Economico */
+.filter-chip-crown {
+    border-color: #FCD34D !important;
+    background: #FEF3C7 !important;
+    color: #92400E !important;
+    font-weight: 700 !important;
+}
+
+.filter-chip-crown.active {
+    background: #D97706 !important;
+    border-color: #D97706 !important;
+    color: white !important;
+}
+
+/* Grafico Andamento Settimanale SVG */
+.weekly-chart-card {
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 12px 14px;
+}
+
+.weekly-chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.weekly-chart-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #374151;
+}
+
+.weekly-chart-sub {
+    font-size: 11px;
+    font-weight: 600;
+    color: #059669;
+}
+
+.weekly-svg-wrap {
+    width: 100%;
+    height: 70px;
+}
+
+.weekly-days-row {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #9CA3AF;
+    padding: 0 4px;
+}
+
+body.dark-theme .weekly-chart-card {
+    background: #0F172A;
+    border-color: #334155;
+}
+
+body.dark-theme .weekly-chart-title {
+    color: #F8FAFC;
+}
+
+/* --- Pulsante Cerca in quest'area --- */
+.btn-search-area {
+    align-self: center;
+    pointer-events: auto;
+    margin-top: 4px;
+    padding: 8px 16px;
+    background: white;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+    border-radius: 100px;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-search-area:active {
+    transform: scale(0.96);
+    background: #EFF6FF;
+}
+
+.btn-search-area.hidden {
+    display: none;
+}
+
+.btn-locate {
+    width: 48px;
+    height: 48px;
+    border: none;
+    background: white;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.btn-locate svg {
+    width: 22px;
+    height: 22px;
+    color: var(--accent);
+}
+
+.btn-locate:active {
+    background: var(--gray-100);
+}
+
+/* --- Pill di stato --- */
+.status-pill {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: white;
+    border-radius: 100px;
+    box-shadow: var(--shadow);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    transition: opacity 0.3s, transform 0.3s;
+}
+
+.status-pill.hidden {
+    opacity: 0;
+    transform: translateX(-50%) translateY(16px);
+    pointer-events: none;
+}
+
+.pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* --- Bottom Sheet Restyled --- */
+.bottom-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1002;
+    background: #FFFFFF;
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -8px 36px rgba(0, 0, 0, 0.16);
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    max-height: 80vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+}
+
+.bottom-sheet.open {
+    transform: translateY(0);
+}
+
+.sheet-top-bar {
+    position: relative;
+    padding-top: 10px;
+    display: flex;
+    justify-content: center;
+}
+
+.sheet-handle {
+    width: 40px;
+    height: 5px;
+    background: #E5E7EB;
+    border-radius: 10px;
+}
+
+.btn-sheet-close {
+    position: absolute;
+    top: 10px;
+    right: 18px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #F3F4F6;
+    border: none;
+    color: var(--text-sec);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+
+.btn-sheet-close:active {
+    background: #E5E7EB;
+}
+
+/* Header Distributore */
+.sheet-header {
+    padding: 14px 20px 0;
+}
+
+.sheet-brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.sheet-brand-tag {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-sec);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.sheet-badge {
+    padding: 4px 12px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sheet-badge.aperto     { background: #D1FAE5; color: #047857; }
+.sheet-badge.chiuso     { background: #FEE2E2; color: #B91C1C; }
+.sheet-badge.parziale   { background: #FEF3C7; color: #B45309; }
+.sheet-badge.sconosciuto { background: #F3F4F6; color: #6B7280; }
+
+.sheet-nome {
+    font-size: 20px;
+    font-weight: 800;
+    color: #111827;
+    line-height: 1.25;
+}
+
+.sheet-indirizzo {
+    margin-top: 4px;
+    font-size: 13px;
+    color: #6B7280;
+}
+
+.sheet-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.sheet-distanza { color: var(--accent); }
+.sheet-dot { color: #D1D5DB; }
+.sheet-conferme { color: #9CA3AF; }
+
+/* Tasto Navigazione con Gradiente */
+.btn-navigate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 14px;
+    height: 46px;
+    background: linear-gradient(135deg, #0066FF 0%, #0052CC 100%);
+    color: white;
+    text-decoration: none;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(0, 102, 255, 0.3);
+    transition: transform 0.15s, opacity 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.btn-navigate:active {
+    transform: scale(0.98);
+    opacity: 0.95;
+}
+
+.btn-navigate svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Sezioni */
+.sheet-section {
+    padding: 18px 20px 0;
+}
+
+.section-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.sheet-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #111827;
+    letter-spacing: -0.01em;
+}
+
+.section-subtitle {
+    font-size: 11px;
+    font-weight: 500;
+    color: #9CA3AF;
+}
+
+/* Schede Prezzi Fintech */
+.fuel-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.fuel-card-modern {
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    transition: border-color 0.2s;
+}
+
+.fuel-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.fuel-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.fuel-indicator-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.dot-benzina { background: #10B981; }
+.dot-diesel  { background: #1F2937; }
+.dot-gpl     { background: #0EA5E9; }
+.dot-metano  { background: #F59E0B; }
+
+.fuel-avail-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.avail-ok { background: #ECFDF5; color: #059669; }
+.avail-no { background: #FEE2E2; color: #DC2626; }
+
+.fuel-price-large {
+    font-size: 18px;
+    font-weight: 800;
+    color: #111827;
+    letter-spacing: -0.02em;
+}
+
+.fuel-price-large small {
+    font-size: 11px;
+    font-weight: 500;
+    color: #6B7280;
+    margin-left: 2px;
+}
+
+.price-unreported {
+    font-size: 13px;
+    font-weight: 600;
+    color: #9CA3AF;
+}
+
+.price-out {
+    font-size: 13px;
+    font-weight: 700;
+    color: #EF4444;
+}
+
+.fuel-card-modern.fuel-no-price {
+    opacity: 0.75;
+    background: #F3F4F6;
+}
+
+/* Attesa e Coda alle Pompe */
+.queue-status-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: #059669;
+}
+
+.queue-stepper {
+    display: flex;
+    gap: 6px;
+}
+
+.step-bar {
+    flex: 1;
+    height: 6px;
+    border-radius: 6px;
+    background: #E5E7EB;
+    transition: background 0.25s;
+}
+
+.step-bar.active-green  { background: #10B981; }
+.step-bar.active-amber  { background: #F59E0B; }
+.step-bar.active-red    { background: #EF4444; }
+
+/* Foto Recente */
+.photo-preview-card {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    height: 140px;
+}
+
+.photo-preview-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.photo-badge {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
+    backdrop-filter: blur(4px);
+}
+
+.btn-streetview-pill {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background: rgba(17, 24, 39, 0.85);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 10px;
+    border-radius: 100px;
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    transition: transform 0.15s, background 0.15s;
+}
+
+.btn-streetview-pill:active {
+    transform: scale(0.95);
+    background: #000;
+}
+
+.btn-streetview-pill svg {
+    width: 14px;
+    height: 14px;
+    color: #60A5FA;
+}
+
+/* Form Segnalazione: Segmented Control & Chip */
+.sheet-section-feedback {
+    background: #F9FAFB;
+    margin-top: 14px;
+    border-top: 1px solid #E5E7EB;
+    padding-bottom: 8px;
+}
+
+.report-segmented-control {
+    display: flex;
+    background: #E5E7EB;
+    padding: 3px;
+    border-radius: 10px;
+    gap: 3px;
+}
+
+.segment-btn {
+    flex: 1;
+    height: 38px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6B7280;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.segment-btn .icon { font-size: 14px; }
+
+.segment-btn.segment-aperto.selected {
+    background: #FFFFFF;
+    color: #059669;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.segment-btn.segment-chiuso.selected {
+    background: #FFFFFF;
+    color: #DC2626;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+/* Quick Tags */
+.quick-tags-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.tag-chip {
+    padding: 8px 12px;
+    border-radius: 100px;
+    background: #FFFFFF;
+    border: 1px solid #D1D5DB;
+    font-size: 12px;
+    font-weight: 600;
+    color: #4B5563;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+}
+
+.tag-chip:active { transform: scale(0.96); }
+
+.tag-chip.selected {
+    background: #111827;
+    color: #FFFFFF;
+    border-color: #111827;
+}
+
+/* Upload Foto Moderno */
+.photo-upload-modern {
+    margin-top: 10px;
+}
+
+.btn-attach-modern {
+    width: 100%;
+    height: 40px;
+    border: 1px dashed #D1D5DB;
+    background: #FFFFFF;
+    border-radius: 10px;
+    color: #6B7280;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.btn-attach-modern svg {
+    width: 16px;
+    height: 16px;
+}
+
+.photo-preview-wrap {
+    position: relative;
+    height: 90px;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 6px;
+}
+
+.photo-preview-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.btn-remove-photo {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+/* CTA Conferma Segnalazione */
+.btn-submit-report {
+    width: 100%;
+    height: 46px;
+    margin-top: 12px;
+    background: #111827;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transition: all 0.2s;
+}
+
+.btn-submit-report.disabled {
+    background: #E5E7EB;
+    color: #9CA3AF;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.sheet-footer {
+    padding: 12px 20px;
+    background: #F9FAFB;
+}
+
+.sheet-aggiornamento {
+    font-size: 11px;
+    color: #9CA3AF;
+    text-align: center;
+}
+
+/* --- Toast Notifica Push --- */
+.toast {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-30px);
+    z-index: 3000;
+    padding: 14px 24px;
+    background: #1A1A2E;
+    color: white;
+    border-radius: 100px;
+    font-size: 14px;
+    font-weight: 600;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    white-space: nowrap;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* --- Pin Prezzo Mappa Custom (Stile Waze / Google Maps) --- */
+.custom-pin-wrap {
+    background: transparent;
+    border: none;
+}
+
+.fuel-price-pin {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    background: #FFFFFF;
+    color: #111827;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.18);
+    border: 1.5px solid #D1D5DB;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.fuel-price-pin:hover, .fuel-price-pin:active {
+    transform: scale(1.08);
+    box-shadow: 0 5px 16px rgba(0,0,0,0.25);
+    z-index: 1000 !important;
+}
+
+.pin-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #10B981;
+    flex-shrink: 0;
+}
+
+.pin-status-aperto .pin-status-dot     { background: #10B981; }
+.pin-status-chiuso .pin-status-dot     { background: #EF4444; }
+.pin-status-parziale .pin-status-dot   { background: #F59E0B; }
+.pin-status-sconosciuto .pin-status-dot { background: #9CA3AF; }
+
+.pin-tail {
+    position: absolute;
+    bottom: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid #FFFFFF;
+}
+
+/* Pin Miglior Prezzo (Dorato e con Corona) */
+.fuel-price-pin.pin-cheapest {
+    background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+    border-color: #F59E0B;
+    color: #92400E;
+    font-weight: 800;
+    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);
+}
+
+.fuel-price-pin.pin-cheapest .pin-tail {
+    border-top-color: #FDE68A;
+}
+
+.pin-crown {
+    position: absolute;
+    top: -11px;
+    left: -6px;
+    font-size: 14px;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));
+    animation: bounceCrown 1.5s infinite;
+}
+
+.pin-crown-pitstop {
+    font-size: 13px;
+    animation: bounceCrown 1.8s infinite;
+}
+
+/* Pin Sosta Consigliata per Autonomia */
+.fuel-price-pin.pin-pitstop-highlight {
+    background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
+    border-color: #10B981;
+    color: #065F46;
+    font-weight: 800;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.45);
+}
+
+.fuel-price-pin.pin-pitstop-highlight .pin-tail {
+    border-top-color: #D1FAE5;
+}
+
+body.dark-theme .fuel-price-pin.pin-pitstop-highlight {
+    background: linear-gradient(135deg, #064E3B 0%, #047857 100%);
+    border-color: #10B981;
+    color: #D1FAE5;
+}
+
+body.dark-theme .fuel-price-pin.pin-pitstop-highlight .pin-tail {
+    border-top-color: #047857;
+}
+
+/* Tooltip Finestra di Rifornimento Consigliata */
+.refuel-zone-tooltip {
+    background: #111827 !important;
+    color: #FFFFFF !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    padding: 6px 10px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+    border: 1px solid #10B981 !important;
+}
+
+/* Badge Autostradale su Pin */
+.pin-highway {
+    border-color: #0284C7 !important;
+}
+
+.pin-highway-badge {
+    font-size: 11px;
+    line-height: 1;
+}
+
+/* --- Cluster Marker Custom --- */
+.fuel-cluster-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: white;
+    font-weight: 800;
+    font-size: 12px;
+    box-shadow: 0 4px 14px rgba(0, 102, 255, 0.35);
+    border: 2.5px solid white;
+    transition: transform 0.15s;
+}
+
+.cluster-sm {
+    width: 36px;
+    height: 36px;
+    background: #0066FF;
+}
+
+.cluster-md {
+    width: 40px;
+    height: 40px;
+    background: #0052CC;
+    font-size: 13px;
+}
+
+.cluster-lg {
+    width: 44px;
+    height: 44px;
+    background: #003D99;
+    font-size: 14px;
+}
+
+.fuel-cluster-icon:hover {
+    transform: scale(1.1);
+}
+
+/* Dark theme per Pin e Cluster */
+body.dark-theme .fuel-price-pin {
+    background: #1E293B;
+    color: #F8FAFC;
+    border-color: #475569;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
+
+body.dark-theme .fuel-price-pin .pin-tail {
+    border-top-color: #1E293B;
+}
+
+body.dark-theme .fuel-price-pin.pin-cheapest {
+    background: linear-gradient(135deg, #78350F 0%, #92400E 100%);
+    border-color: #F59E0B;
+    color: #FEF3C7;
+}
+
+body.dark-theme .fuel-price-pin.pin-cheapest .pin-tail {
+    border-top-color: #92400E;
+}
+
+body.dark-theme .fuel-cluster-icon {
+    border-color: #0F172A;
+}
+
+/* --- Marker custom retrocompatibile --- */
+.marker-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.marker-icon span {
+    transform: rotate(45deg);
+    font-size: 16px;
+    line-height: 1;
+    display: block;
+}
+
+.marker-aperto     { background: var(--green); }
+.marker-chiuso     { background: var(--red); }
+.marker-parziale   { background: var(--amber); }
+.marker-sconosciuto { background: var(--gray-300); }
+
+/* --- Leaflet overrides --- */
+.leaflet-control-attribution {
+    font-size: 10px !important;
+    opacity: 0.6;
+}
+
+.leaflet-popup-content-wrapper {
+    border-radius: var(--radius) !important;
+    box-shadow: var(--shadow) !important;
+    padding: 0 !important;
+}
+
+.leaflet-popup-content {
+    margin: 0 !important;
+    font-family: 'Inter', sans-serif !important;
+}
+
+.leaflet-popup-tip {
+    box-shadow: none !important;
+}
+
+/* --- Corona Miglior Prezzo sui Marker --- */
+.marker-crown {
+    position: absolute;
+    top: -12px;
+    right: -8px;
+    font-size: 16px;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+    animation: bounceCrown 1.5s infinite;
+}
+
+@keyframes bounceCrown {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+}
+
+.header-badges-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sheet-cheapest-badge {
+    padding: 3px 8px;
+    border-radius: 100px;
+    background: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #FCD34D;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.sheet-pitstop-badge {
+    padding: 3px 8px;
+    border-radius: 100px;
+    background: #ECFDF5;
+    color: #047857;
+    border: 1px solid #10B981;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+body.dark-theme .sheet-pitstop-badge {
+    background: #064E3B;
+    color: #A7F3D0;
+    border-color: #059669;
+}
+
+/* --- Tasti Naviga + Preferiti + Condividi Affiancati --- */
+.sheet-actions-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.sheet-actions-row .btn-navigate {
+    flex: 2.2;
+    margin-top: 0;
+}
+
+.btn-action-sheet {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    background: #F3F4F6;
+    color: #374151;
+    border: none;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.btn-action-sheet svg {
+    width: 17px;
+    height: 17px;
+    color: #4B5563;
+}
+
+.btn-action-sheet:active {
+    background: #E5E7EB;
+    transform: scale(0.97);
+}
+
+/* Stile Tasto Preferiti */
+.btn-fav.active {
+    background: #FEF3C7;
+    color: #B45309;
+}
+
+.btn-fav.active svg {
+    fill: #F59E0B;
+    stroke: #D97706;
+    color: #F59E0B;
+}
+
+body.dark-theme .btn-action-sheet {
+    background: #334155;
+    color: #F8FAFC;
+}
+
+body.dark-theme .btn-action-sheet svg {
+    color: #F8FAFC;
+}
+
+body.dark-theme .btn-fav.active {
+    background: #78350F;
+    color: #FEF3C7;
+}
+
+body.dark-theme .btn-fav.active svg {
+    fill: #F59E0B;
+    stroke: #FCD34D;
+    color: #F59E0B;
+}
+
+/* Chip Preferiti */
+.filter-chip-fav {
+    border-color: #FCD34D !important;
+}
+
+.filter-chip-fav.active {
+    background: #F59E0B !important;
+    border-color: #D97706 !important;
+    color: white !important;
+}
+
+/* Lista Preferiti Modal */
+.favorites-list-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 55vh;
+    overflow-y: auto;
+    padding-top: 4px;
+}
+
+.fav-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.fav-card:hover {
+    background: #F3F4F6;
+    border-color: #D1D5DB;
+}
+
+.fav-card:active {
+    transform: scale(0.98);
+}
+
+.fav-info-col {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.fav-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #111827;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fav-sub {
+    font-size: 11px;
+    color: #6B7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fav-actions-col {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 10px;
+}
+
+.fav-price-badge {
+    background: #ECFDF5;
+    color: #047857;
+    border: 1px solid #A7F3D0;
+    padding: 3px 7px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.btn-remove-fav {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: #9CA3AF;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-remove-fav:hover {
+    background: #FEE2E2;
+    color: #DC2626;
+}
+
+.fav-empty-state {
+    text-align: center;
+    padding: 24px 16px;
+    color: #6B7280;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.fav-empty-icon {
+    font-size: 32px;
+}
+
+.fav-empty-text {
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* Dark mode per Preferiti */
+body.dark-theme .fav-card {
+    background: #0F172A;
+    border-color: #334155;
+}
+
+body.dark-theme .fav-card:hover {
+    background: #1E293B;
+}
+
+body.dark-theme .fav-title {
+    color: #F8FAFC;
+}
+
+body.dark-theme .fav-sub {
+    color: #94A3B8;
+}
+
+body.dark-theme .fav-price-badge {
+    background: #064E3B;
+    border-color: #047857;
+    color: #A7F3D0;
+}
+
+/* --- Calcolatore Risparmio Pieno --- */
+.savings-card {
+    background: linear-gradient(135deg, #ECFDF5 0%, #F0FDF4 100%);
+    border: 1.5px solid #A7F3D0;
+    border-radius: 14px;
+    padding: 12px 14px;
+}
+
+.savings-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.savings-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #065F46;
+}
+
+.savings-amount-badge {
+    font-size: 13px;
+    font-weight: 800;
+    color: #047857;
+    background: #FFFFFF;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid #A7F3D0;
+}
+
+.savings-pills-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.savings-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #065F46;
+}
+
+.tank-pill {
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: #FFFFFF;
+    border: 1px solid #A7F3D0;
+    color: #047857;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.tank-pill.active {
+    background: #059669;
+    color: white;
+    border-color: #059669;
+}
+
+/* --- Trend Prezzi Badge --- */
+.trend-pill {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 4px;
+}
+
+.trend-down { background: #ECFDF5; color: #059669; }
+.trend-up   { background: #FEF2F2; color: #DC2626; }
+
+/* --- Route Planner Modal (Ricerca Pompe Lungo il Percorso) --- */
+.route-modal-card {
+    position: fixed;
+    top: 76px;
+    left: 16px;
+    right: 16px;
+    max-width: 420px;
+    margin: 0 auto;
+    background: #FFFFFF;
+    border-radius: 16px;
+    box-shadow: 0 10px 32px rgba(0,0,0,0.22);
+    z-index: 1005;
+    padding: 16px;
+    border: 1px solid #E5E7EB;
+    animation: slideDownModal 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* --- Pannello Mappa & Strumenti (Tools Card) --- */
+.tools-card {
+    max-width: 380px;
+}
+
+.tools-grid-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tool-item-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 14px;
+    transition: background 0.15s, border-color 0.15s;
+    width: 100%;
+    text-align: left;
+    user-select: none;
+}
+
+button.tool-item-card {
+    cursor: pointer;
+    font-family: inherit;
+}
+
+button.tool-item-card:hover {
+    background: #F3F4F6;
+    border-color: #D1D5DB;
+}
+
+button.tool-item-card:active {
+    transform: scale(0.98);
+}
+
+.tool-icon-wrap {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    margin-right: 12px;
+}
+
+.tool-fav-icon   { background: #FEF3C7; }
+.tool-radar-icon { background: #ECFDF5; }
+.tool-sat-icon   { background: #EFF6FF; }
+.tool-theme-icon { background: #F1F5F9; }
+
+.tool-text-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.tool-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.tool-sub {
+    font-size: 11px;
+    color: #6B7280;
+    margin-top: 1px;
+}
+
+.tool-arrow {
+    color: #9CA3AF;
+    font-size: 13px;
+    font-weight: 700;
+    margin-left: 8px;
+}
+
+/* Switch Toggle stile iOS */
+.switch-toggle {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 25px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.switch-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    inset: 0;
+    background-color: #E2E8F0;
+    border-radius: 34px;
+    transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toggle-slider::before {
+    position: absolute;
+    content: "";
+    height: 19px;
+    width: 19px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.switch-toggle input:checked + .toggle-slider {
+    background-color: #0066FF;
+}
+
+.switch-toggle input:checked + .toggle-slider::before {
+    transform: translateX(19px);
+}
+
+/* Dark Mode per Strumenti */
+body.dark-theme .tool-item-card {
+    background: #0F172A;
+    border-color: #334155;
+}
+
+body.dark-theme button.tool-item-card:hover {
+    background: #1E293B;
+}
+
+body.dark-theme .tool-title {
+    color: #F8FAFC;
+}
+
+body.dark-theme .tool-sub {
+    color: #94A3B8;
+}
+
+body.dark-theme .tool-fav-icon   { background: #78350F; }
+body.dark-theme .tool-radar-icon { background: #064E3B; }
+body.dark-theme .tool-sat-icon   { background: #1E3A8A; }
+body.dark-theme .tool-theme-icon { background: #334155; }
+
+body.dark-theme .toggle-slider {
+    background-color: #334155;
+}
+
+body.dark-theme .switch-toggle input:checked + .toggle-slider {
+    background-color: #3B82F6;
+}
+
+@keyframes slideDownModal {
+    from { opacity: 0; transform: translateY(-16px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.route-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.route-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.route-title-wrap h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: #111827;
+}
+
+.btn-close-route {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: #F3F4F6;
+    color: #6B7280;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.route-inputs-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.route-input-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    padding: 0 12px;
+    height: 42px;
+}
+
+.route-input-group input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    width: 100%;
+    color: #111827;
+}
+
+.route-dot {
+    font-size: 12px;
+}
+
+.route-dot.green { color: #10B981; }
+.route-dot.red   { color: #EF4444; }
+
+.route-carb-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 600;
+    color: #4B5563;
+    padding: 2px 4px;
+}
+
+.route-carb-row select {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid #D1D5DB;
+    background: white;
+    font-size: 12px;
+    font-weight: 600;
+    outline: none;
+    cursor: pointer;
+}
+
+/* --- Box Autonomia Residua (Pit-Stop Planner) --- */
+.route-autonomy-box {
+    background: #F0FDF4;
+    border: 1px solid #BBF7D0;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-top: 2px;
+}
+
+.autonomy-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 600;
+    color: #166534;
+}
+
+.autonomy-val-badge {
+    background: #16A34A;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.autonomy-slider {
+    width: 100%;
+    margin-top: 6px;
+    cursor: pointer;
+    accent-color: #16A34A;
+}
+
+.autonomy-legend {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 600;
+    color: #15803D;
+    margin-top: 2px;
+}
+
+body.dark-theme .route-autonomy-box {
+    background: #064E3B;
+    border-color: #047857;
+}
+
+body.dark-theme .autonomy-header {
+    color: #D1FAE5;
+}
+
+body.dark-theme .autonomy-legend {
+    color: #A7F3D0;
+}
+
+.btn-calc-route {
+    height: 44px;
+    margin-top: 4px;
+    background: linear-gradient(135deg, #0066FF 0%, #0052CC 100%);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0, 102, 255, 0.3);
+    transition: transform 0.15s;
+}
+
+.btn-calc-route:active {
+    transform: scale(0.98);
+}
+
+.btn-clear-route {
+    height: 36px;
+    background: #F3F4F6;
+    color: #4B5563;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* Dark mode per Route Planner */
+body.dark-theme .route-modal-card {
+    background: #1E293B;
+    border-color: #334155;
+    color: #F8FAFC;
+    box-shadow: 0 10px 32px rgba(0,0,0,0.6);
+}
+
+body.dark-theme .route-title-wrap h3 {
+    color: #F8FAFC;
+}
+
+body.dark-theme .btn-close-route {
+    background: #334155;
+    color: #F8FAFC;
+}
+
+body.dark-theme .route-input-group {
+    background: #0F172A;
+    border-color: #334155;
+}
+
+body.dark-theme .route-input-group input {
+    color: #F8FAFC;
+}
+
+body.dark-theme .route-carb-row {
+    color: #94A3B8;
+}
+
+body.dark-theme .route-carb-row select {
+    background: #0F172A;
+    border-color: #334155;
+    color: #F8FAFC;
+}
+
+body.dark-theme .btn-clear-route {
+    background: #334155;
+    color: #F8FAFC;
+}
+
+/* ============================================================
+   DARK MODE — Guida Notturna
+   ============================================================ */
+body.dark-theme {
+    --bg: #0F172A;
+    --text: #F8FAFC;
+    --text-sec: #94A3B8;
+    background: #0F172A;
+}
+
+body.dark-theme .search-inner,
+body.dark-theme .btn-locate,
+body.dark-theme .btn-satellite,
+body.dark-theme .btn-theme,
+body.dark-theme .filter-chip,
+body.dark-theme .status-pill,
+body.dark-theme .btn-search-area {
+    background: #1E293B;
+    color: #F8FAFC;
+    border-color: #334155;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+body.dark-theme .search-input {
+    color: #F8FAFC;
+}
+
+body.dark-theme .filter-chip.active {
+    background: #3B82F6;
+    border-color: #3B82F6;
+    color: white;
+}
+
+body.dark-theme .bottom-sheet {
+    background: #1E293B;
+    color: #F8FAFC;
+}
+
+body.dark-theme .btn-sheet-close {
+    background: #334155;
+    color: #F8FAFC;
+}
+
+body.dark-theme .sheet-nome,
+body.dark-theme .sheet-section-title,
+body.dark-theme .fuel-price-large {
+    color: #F8FAFC;
+}
+
+body.dark-theme .sheet-brand-tag,
+body.dark-theme .sheet-indirizzo,
+body.dark-theme .section-subtitle,
+body.dark-theme .fuel-price-large small {
+    color: #94A3B8;
+}
+
+body.dark-theme .fuel-card-modern {
+    background: #0F172A;
+    border-color: #334155;
+}
+
+body.dark-theme .fuel-name-row {
+    color: #CBD5E1;
+}
+
+body.dark-theme .sheet-section-feedback,
+body.dark-theme .sheet-footer {
+    background: #0F172A;
+    border-color: #334155;
+}
+
+body.dark-theme .btn-share {
+    background: #334155;
+    color: #F8FAFC;
+}
+
+body.dark-theme .btn-share svg {
+    color: #F8FAFC;
+}
+
+body.dark-theme .report-segmented-control {
+    background: #334155;
+}
+
+body.dark-theme .segment-btn {
+    color: #94A3B8;
+}
+
+body.dark-theme .segment-btn.segment-aperto.selected {
+    background: #0F172A;
+    color: #10B981;
+}
+
+body.dark-theme .segment-btn.segment-chiuso.selected {
+    background: #0F172A;
+    color: #EF4444;
+}
+
+body.dark-theme .tag-chip {
+    background: #0F172A;
+    border-color: #334155;
+    color: #CBD5E1;
+}
+
+body.dark-theme .tag-chip.selected {
+    background: #3B82F6;
+    border-color: #3B82F6;
+    color: white;
+}
+
+body.dark-theme .btn-attach-modern {
+    background: #0F172A;
+    border-color: #334155;
+    color: #94A3B8;
+}
+
+body.dark-theme .btn-submit-report {
+    background: #3B82F6;
+}
+
+body.dark-theme .btn-submit-report.disabled {
+    background: #334155;
+    color: #64748B;
+}
+
+/* ============================================
+   FIX: STILE MENU A TENDINA E TASTI FLOTTANTI
+   ============================================ */
+
+/* 1. Stile del nuovo Menù a Tendina */
+.filter-dropdown-wrap {
+    pointer-events: auto;
+}
+
+.filter-dropdown {
+    height: 48px;
+    /* Aumentato il padding a destra (32px) per fare spazio alla freccetta */
+    padding: 0 32px 0 16px; 
+    border: none;
+    background: #FFFFFF;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    outline: none;
+    flex-shrink: 0; /* Impedisce al browser di schiacciare il bottone */
+    min-width: 110px; /* Larghezza minima garantita */
+    appearance: auto;
+}
+
+/* 2. Contenitore Tasti Flottanti (Stile Google Maps) - FLUIDO */
+.floating-controls-stack {
+    position: fixed;
+    /* Margine laterale e superiore che respirano con lo schermo */
+    right: clamp(12px, 3vw, 20px);
+    top: clamp(120px, 18vh, 140px);
+    display: flex;
+    flex-direction: column;
+    /* Anche lo spazio tra i bottoni si rimpicciolisce su mobile */
+    gap: clamp(8px, 2vh, 12px);
+    z-index: 1000;
+    pointer-events: none; 
+}
+
+/* 3. Stile dei singoli Tasti Flottanti (FAB) - DIMENSIONI DINAMICHE */
+.fab-btn {
+    /* Il segreto della fluidità: min 42px (telefono), ideale 10% dello schermo, max 50px (PC) */
+    width: clamp(42px, 10vw, 50px);
+    height: clamp(42px, 10vw, 50px);
+    border: none;
+    background: #FFFFFF;
+    /* Il raggio dei bordi scala proporzionalmente */
+    border-radius: clamp(10px, 2.5vw, 14px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-sec);
+    transition: all 0.2s;
+    pointer-events: auto; 
+}
+
+.fab-btn svg {
+    /* Le icone si adattano dentro il bottone: min 20px, max 24px */
+    width: clamp(20px, 5vw, 24px);
+    height: clamp(20px, 5vw, 24px);
+}
+
+.fab-btn:active {
+    transform: scale(0.92);
+    background: var(--gray-100);
+}
+
+/* Stati attivi specifici */
+#btnLocate svg {
+    color: var(--accent);
+}
+
+#btnSatellite.active {
+    background: var(--text);
+    color: white;
+}
+
+/* Radar Notifiche FAB e indicatore attivo */
+.fab-btn {
+    position: relative;
+}
+
+.fab-btn.active-radar {
+    color: #10B981 !important;
+}
+
+.notification-badge-dot {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #10B981;
+    border: 2px solid #FFFFFF;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.8);
+    animation: pulse 2s infinite;
+}
+
+body.dark-theme .notification-badge-dot {
+    border-color: #1E293B;
+}
+
+#btnTheme.active {
+    background: #1E293B;
+    color: #FACC15;
+}
+
+/* 4. Fix Dark Mode per Tendina e Tasti Flottanti */
+body.dark-theme .filter-dropdown,
+body.dark-theme .fab-btn {
+    background: #1E293B;
+    color: #F8FAFC;
+    border: 1px solid #334155;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+
+body.dark-theme #btnLocate svg {
+    color: #3B82F6;
+}
+
+

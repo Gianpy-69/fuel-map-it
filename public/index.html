@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#FAFAFA">
+    <title>Fuel Map Italia</title>
+
+    <!-- PWA & Mobile Meta -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <link rel="apple-touch-icon" href="/icon.svg">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="FuelMap">
+
+    <!-- Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+    <!-- App CSS -->
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+    <!-- Mappa a tutto schermo -->
+    <div id="map"></div>
+
+    <!-- Header di navigazione: ricerca + menù a tendina filtri -->
+    <header class="top-nav">
+        <div class="search-bar">
+            <div class="search-inner">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="text" id="searchInput" class="search-input" placeholder="Cerca distributore, città o brand..." autocomplete="off">
+                <button type="button" id="btnClearSearch" class="btn-clear-search hidden" title="Cancella">✕</button>
+            </div>
+            
+        </div>
+
+        <!-- Barra Filtri Compatta (Stile Fintech / Google Maps) -->
+        <div class="compact-filter-bar">
+            <!-- Custom Dropdown Carburanti Flottante -->
+            <div class="custom-dropdown-wrap" id="fuelDropdownWrap">
+                <button type="button" class="filter-pill-btn" id="btnFuelDropdown">
+                    <span class="active-fuel-dot" id="activeFuelDot">✨</span>
+                    <span id="lblActiveFuel">Tutti</span>
+                    <svg class="dropdown-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </button>
+                <div class="custom-dropdown-menu hidden" id="fuelDropdownMenu">
+                    <div class="dropdown-item active" data-val="">
+                        <span class="dropdown-dot dot-tutti">✨</span>
+                        <span class="dropdown-item-label">Tutti i Carburanti</span>
+                        <span class="dropdown-check">✓</span>
+                    </div>
+                    <div class="dropdown-item" data-val="benzina">
+                        <span class="dropdown-dot dot-benzina"></span>
+                        <span class="dropdown-item-label">Benzina</span>
+                        <span class="dropdown-check hidden">✓</span>
+                    </div>
+                    <div class="dropdown-item" data-val="diesel">
+                        <span class="dropdown-dot dot-diesel"></span>
+                        <span class="dropdown-item-label">Diesel</span>
+                        <span class="dropdown-check hidden">✓</span>
+                    </div>
+                    <div class="dropdown-item" data-val="gpl">
+                        <span class="dropdown-dot dot-gpl"></span>
+                        <span class="dropdown-item-label">GPL</span>
+                        <span class="dropdown-check hidden">✓</span>
+                    </div>
+                    <div class="dropdown-item" data-val="metano">
+                        <span class="dropdown-dot dot-metano"></span>
+                        <span class="dropdown-item-label">Metano</span>
+                        <span class="dropdown-check hidden">✓</span>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="filter-chip filter-chip-crown" id="btnFilterCheapest" data-filtro="economico">
+                👑 Più Economico
+            </button>
+            <button type="button" class="filter-chip" id="btnFilterClosed" data-filtro="chiusi" title="Mostra o nascondi pompe chiuse">
+                🔴 Chiusi
+            </button>
+        </div>
+
+        <!-- Pulsante Cerca in questa zona -->
+        <button id="btnSearchArea" class="btn-search-area hidden">
+            <span>🔍 Cerca in quest'area</span>
+        </button>
+    </header>
+
+    <!-- Controlli Flottanti Laterali (Puliti, Stile Google Maps) -->
+    <aside class="floating-controls-stack">
+        <button class="fab-btn" id="btnTools" title="Mappa & Strumenti">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                <polyline points="2 17 12 22 22 17"/>
+                <polyline points="2 12 12 17 22 12"/>
+            </svg>
+            <span class="notification-badge-dot hidden" id="toolsActiveDot"></span>
+        </button>
+        <button class="fab-btn" id="btnOpenRoute" title="Trova pompe lungo il percorso (A ➔ B)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/>
+                <path d="M6 15v-4a4 4 0 0 1 4-4h4"/>
+            </svg>
+        </button>
+        <button class="fab-btn" id="btnLocate" title="La mia posizione (GPS)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
+            </svg>
+        </button>
+    </aside>
+
+    <!-- Pannello Mappa & Strumenti (Stile Google Maps Layers) -->
+    <div class="route-modal-card tools-card hidden" id="toolsModalCard">
+        <div class="route-modal-header">
+            <div class="route-title-wrap">
+                <span class="route-badge-icon">🥞</span>
+                <h3>Mappa & Strumenti</h3>
+            </div>
+            <button type="button" class="btn-close-route" id="btnCloseTools" title="Chiudi">✕</button>
+        </div>
+        <div class="tools-grid-body">
+            <!-- Preferiti -->
+            <button type="button" class="tool-item-card" id="btnToolFavorites">
+                <div class="tool-icon-wrap tool-fav-icon">⭐</div>
+                <div class="tool-text-wrap">
+                    <span class="tool-title">Distributori Preferiti</span>
+                    <span class="tool-sub" id="lblToolsFavCount">0 stazioni salvate</span>
+                </div>
+                <span class="tool-arrow">➔</span>
+            </button>
+
+            <!-- Radar Notifiche Prezzi -->
+            <div class="tool-item-card" id="toolRowRadar">
+                <div class="tool-icon-wrap tool-radar-icon">🔔</div>
+                <div class="tool-text-wrap">
+                    <span class="tool-title">Radar Prezzi Vicini</span>
+                    <span class="tool-sub">Notifica entro 1.5 km a prezzi top</span>
+                </div>
+                <label class="switch-toggle">
+                    <input type="checkbox" id="chkToolRadar">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <!-- Vista Satellite -->
+            <div class="tool-item-card" id="toolRowSatellite">
+                <div class="tool-icon-wrap tool-sat-icon">🛰️</div>
+                <div class="tool-text-wrap">
+                    <span class="tool-title">Vista Satellite</span>
+                    <span class="tool-sub">Immagini fotorealistiche Esri</span>
+                </div>
+                <label class="switch-toggle">
+                    <input type="checkbox" id="chkToolSatellite">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <!-- Modalità Notturna -->
+            <div class="tool-item-card" id="toolRowTheme">
+                <div class="tool-icon-wrap tool-theme-icon">🌙</div>
+                <div class="tool-text-wrap">
+                    <span class="tool-title">Guida Notturna</span>
+                    <span class="tool-sub">Mappa scura anti-abbagliamento</span>
+                </div>
+                <label class="switch-toggle">
+                    <input type="checkbox" id="chkToolTheme">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Ricerca Pompe lungo il Percorso -->
+    <div class="route-modal-card hidden" id="routeModalCard">
+        <div class="route-modal-header">
+            <div class="route-title-wrap">
+                <span class="route-badge-icon">🚗</span>
+                <h3>Pompe sul Percorso</h3>
+            </div>
+            <button type="button" class="btn-close-route" id="btnCloseRoute">✕</button>
+        </div>
+        <div class="route-inputs-body">
+            <div class="route-input-group">
+                <span class="route-dot green">●</span>
+                <input type="text" id="routeStartInput" placeholder="Partenza (es. Posizione attuale o Roma)" autocomplete="off" />
+            </div>
+            <div class="route-input-group">
+                <span class="route-dot red">📍</span>
+                <input type="text" id="routeDestInput" placeholder="Destinazione (es. Firenze, Milano...)" autocomplete="off" />
+            </div>
+            <div class="route-carb-row">
+                <label for="routeCarbSelect">Carburante:</label>
+                <select id="routeCarbSelect">
+                    <option value="benzina">⛽ Benzina</option>
+                    <option value="diesel">⛽ Diesel</option>
+                    <option value="gpl">💧 GPL</option>
+                    <option value="metano">💨 Metano</option>
+                </select>
+            </div>
+            <div class="route-carb-row">
+                <label for="routeTypeSelect">Impianti:</label>
+                <select id="routeTypeSelect">
+                    <option value="tutte">✨ Autostrada + Uscite vicine</option>
+                    <option value="solo_autostrada">🛣️ Solo in Autostrada (no caselli)</option>
+                    <option value="risparmio">💰 Max Risparmio (fuori casello)</option>
+                </select>
+            </div>
+            
+            <!-- Pit-Stop Planner: Autonomia Residua -->
+            <div class="route-autonomy-box">
+                <div class="autonomy-header">
+                    <label for="inputAutonomia">⛽ Autonomia residua stimata:</label>
+                    <span class="autonomy-val-badge" id="lblAutonomiaVal">250 km</span>
+                </div>
+                <input type="range" id="inputAutonomia" min="50" max="800" step="25" value="250" class="autonomy-slider">
+                <div class="autonomy-legend">
+                    <span>50 km (Riserva)</span>
+                    <span>Pieno (800 km)</span>
+                </div>
+            </div>
+            <button type="button" class="btn-calc-route" id="btnCalcRoute">
+                <span>🔍 Trova Pompe sul Percorso</span>
+            </button>
+            <button type="button" class="btn-clear-route hidden" id="btnClearRoute">
+                <span>✕ Rimuovi Percorso</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal Distributori Preferiti -->
+    <div class="route-modal-card hidden" id="favoritesModalCard">
+        <div class="route-modal-header">
+            <div class="route-title-wrap">
+                <span class="route-badge-icon">⭐</span>
+                <h3>I Tuoi Distributori Preferiti</h3>
+            </div>
+            <button type="button" class="btn-close-route" id="btnCloseFavorites" title="Chiudi">✕</button>
+        </div>
+        <div class="favorites-list-body" id="favoritesListBody">
+            <!-- Popolato dinamicamente da App.renderFavoritesList() -->
+        </div>
+    </div>
+
+    <!-- Pill di stato in basso -->
+    <div class="status-pill" id="statusPill">
+        <span class="pill-dot"></span>
+        <span class="pill-text">Cercando distributori...</span>
+    </div>
+
+    <!-- Bottom Sheet Restyled -->
+    <div class="bottom-sheet-overlay" id="sheetOverlay"></div>
+    <div class="bottom-sheet" id="bottomSheet">
+        <!-- Maniglia di trascinamento e tasto chiudi -->
+        <div class="sheet-top-bar">
+            <div class="sheet-handle"></div>
+            <button type="button" class="btn-sheet-close" id="btnCloseSheet" title="Chiudi">✕</button>
+        </div>
+
+        <!-- Header Distributore -->
+        <div class="sheet-header">
+            <div class="sheet-brand-row">
+                <span class="sheet-brand-tag" id="sheetBrandTag">⛽ Brand</span>
+                <div class="header-badges-wrap">
+                    <span class="sheet-pitstop-badge hidden" id="sheetPitstopBadge">🎯 Sosta Consigliata</span>
+                    <span class="sheet-cheapest-badge hidden" id="sheetCheapestBadge">👑 Miglior Prezzo</span>
+                    <span class="sheet-badge" id="sheetBadge">—</span>
+                </div>
+            </div>
+            <h2 class="sheet-nome" id="sheetNome">—</h2>
+            <p class="sheet-indirizzo" id="sheetIndirizzo">—</p>
+            <div class="sheet-meta-row">
+                <span class="sheet-distanza" id="sheetDistanza">📍 — da te</span>
+                <span class="sheet-dot">•</span>
+                <span class="sheet-conferme" id="sheetConferme">0 feedback</span>
+            </div>
+
+            <!-- Tasti Azione: Navigazione + Salva Preferiti + Condividi -->
+            <div class="sheet-actions-row">
+                <a id="btnNavigate" class="btn-navigate" href="#" target="_blank" rel="noopener">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+                    </svg>
+                    <span>Naviga</span>
+                </a>
+                <button type="button" id="btnFavoriteStation" class="btn-action-sheet btn-fav" title="Salva nei Preferiti">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                    <span>Salva</span>
+                </button>
+                <button type="button" id="btnShareStation" class="btn-action-sheet btn-share" title="Condividi">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                    </svg>
+                    <span>Condividi</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Sezione Foto Recente se disponibile -->
+        <div class="sheet-section" id="photoSection">
+            <div class="photo-preview-card">
+                <img id="imgStationPhoto" src="" alt="Foto reale">
+                <span class="photo-badge">⛽ Foto Brand</span>
+                <a id="btnStreetView" class="btn-streetview-pill" href="#" target="_blank" rel="noopener" title="Apri Google Street View a 360°">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/>
+                    </svg>
+                    <span>Vista 360°</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Prezzi e Disponibilità Carburanti -->
+        <div class="sheet-section">
+            <div class="section-header-row">
+                <h3 class="sheet-section-title">Prezzi & Disponibilità</h3>
+                <span class="section-subtitle">Aggiornati oggi</span>
+            </div>
+            <div class="fuel-grid" id="fuelGrid"></div>
+        </div>
+
+        <!-- Grafico Andamento Prezzo Settimanale -->
+        <div class="sheet-section" id="chartSection">
+            <div class="weekly-chart-card">
+                <div class="weekly-chart-header">
+                    <span class="weekly-chart-title">📈 Andamento ultimi 7 giorni</span>
+                    <span class="weekly-chart-sub" id="chartTrendSummary">Stabile</span>
+                </div>
+                <div class="weekly-svg-wrap" id="chartSvgWrap"></div>
+                <div class="weekly-days-row">
+                    <span>Lun</span><span>Mar</span><span>Mer</span><span>Gio</span><span>Ven</span><span>Sab</span><span>Dom</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calcolatore Risparmio su un Pieno -->
+        <div class="sheet-section" id="savingsSection">
+            <div class="savings-card">
+                <div class="savings-card-top">
+                    <span class="savings-title">💰 Risparmio stimato sul pieno</span>
+                    <span class="savings-amount-badge" id="savingsAmountBadge">—</span>
+                </div>
+                <div class="savings-pills-row">
+                    <span class="savings-label">Serbatoio:</span>
+                    <button type="button" class="tank-pill" data-litri="40">40 L</button>
+                    <button type="button" class="tank-pill active" data-litri="50">50 L</button>
+                    <button type="button" class="tank-pill" data-litri="60">60 L</button>
+                    <button type="button" class="tank-pill" data-litri="70">70 L</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Traffico & Coda alle Pompe -->
+        <div class="sheet-section">
+            <div class="section-header-row">
+                <h3 class="sheet-section-title">Attesa alle Pompe</h3>
+                <span class="queue-status-text" id="queueStatusText">Scorrevole</span>
+            </div>
+            <div class="queue-stepper" id="queueIndicator">
+                <div class="step-bar" data-step="1"></div>
+                <div class="step-bar" data-step="2"></div>
+                <div class="step-bar" data-step="3"></div>
+            </div>
+        </div>
+
+        <!-- Form Segnalazione Rapida -->
+        <div class="sheet-section sheet-section-feedback">
+            <div class="section-header-row">
+                <h3 class="sheet-section-title">Aiuta la Community</h3>
+                <span class="section-subtitle">Aggiorna lo stato</span>
+            </div>
+
+            <!-- Stato Impianto -->
+            <div class="report-segmented-control">
+                <button type="button" class="segment-btn segment-aperto" data-group="stato" data-val="aperto">
+                    <span class="icon">✓</span>
+                    <span>È Aperto</span>
+                </button>
+                <button type="button" class="segment-btn segment-chiuso" data-group="stato" data-val="chiuso">
+                    <span class="icon">✕</span>
+                    <span>È Chiuso</span>
+                </button>
+            </div>
+
+            <!-- Pompe Esaurite & Coda -->
+            <div class="quick-tags-wrap">
+                <button type="button" class="tag-chip" data-group="pompa" data-val="benzina">
+                    <span>⛽ Benzina a secco</span>
+                </button>
+                <button type="button" class="tag-chip" data-group="pompa" data-val="diesel">
+                    <span>⛽ Diesel a secco</span>
+                </button>
+                <button type="button" class="tag-chip" data-group="coda" data-val="2">
+                    <span>🚗 Coda lunga</span>
+                </button>
+                <button type="button" class="tag-chip" data-group="coda" data-val="0">
+                    <span>🟢 Zero fila</span>
+                </button>
+            </div>
+
+            <!-- Upload Foto Pulito -->
+            <div class="photo-upload-modern">
+                <input type="file" id="inputPhoto" accept="image/*" class="hidden">
+                <button type="button" class="btn-attach-modern" id="btnTriggerPhoto">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                    </svg>
+                    <span>Allega foto cartello o pompe</span>
+                </button>
+                <div class="photo-preview-wrap hidden" id="photoPreviewWrap">
+                    <img id="imgPreviewUpload" src="" alt="Anteprima">
+                    <button type="button" class="btn-remove-photo" id="btnRemovePhoto" title="Rimuovi">✕</button>
+                </div>
+            </div>
+
+            <!-- CTA Invio -->
+            <button type="button" class="btn-submit-report disabled" id="btnSubmitReport" disabled>
+                <span>Conferma Segnalazione</span>
+            </button>
+        </div>
+
+        <div class="sheet-footer">
+            <p class="sheet-aggiornamento" id="sheetAggiornamento">—</p>
+        </div>
+    </div>
+
+    <!-- Toast notifica -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet MarkerCluster JS -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <!-- App JS -->
+    <script src="/js/api.js"></script>
+    <script src="/js/map.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

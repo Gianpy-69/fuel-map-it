@@ -1,0 +1,2506 @@
+﻿
+===== package.json =====
+{
+  "name": "fuel-map-it",
+  "version": "1.0.0",
+  "description": "Mappa crowdsourced dei distributori di carburante in Italia",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js"
+  },
+  "keywords": [
+    "fuel",
+    "map",
+    "crowdsourcing",
+    "italia"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.1",
+    "multer": "^2.5.0",
+    "node-cron": "^4.6.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
+
+
+===== docker-compose.yml =====
+services:
+  db:
+    image: postgis/postgis:15-3.4
+    container_name: fuelmap-db
+    restart: unless-stopped
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: fuelmap
+      POSTGRES_USER: fuelmap_user
+      POSTGRES_PASSWORD: REDACTED
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+
+
+===== .env.example =====
+# Database
+DB_HOST=localhost
+DB_PORT=5433
+DB_NAME=fuelmap
+DB_USER=fuelmap_user
+DB_PASSWORD=REDACTED
+
+# Server
+PORT=3000
+
+
+===== sql/001_schema.sql =====
+-- ============================================
+-- Fuel Map Italia â€” Schema Database
+-- ============================================
+
+-- Abilita PostGIS
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+-- ============================================
+-- 1. Anagrafica distributori
+-- ============================================
+CREATE TABLE distributori (
+    id              SERIAL PRIMARY KEY,
+    nome            VARCHAR(200) NOT NULL,
+    indirizzo       VARCHAR(300),
+    comune          VARCHAR(100),
+    provincia       CHAR(2),
+    posizione       GEOGRAPHY(POINT, 4326) NOT NULL,
+    bandiera        VARCHAR(50),          -- Brand: ENI, Q8, IP, Tamoil...
+    self_service    BOOLEAN DEFAULT true,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indice spaziale GIST per query veloci
+CREATE INDEX idx_distributori_posizione ON distributori USING GIST (posizione);
+
+-- Indice per ricerche per comune/provincia
+CREATE INDEX idx_distributori_comune ON distributori (comune, provincia);
+
+-- ============================================
+-- 2. Stato operativo (1:1 con distributori)
+-- ============================================
+CREATE TABLE stato_operativo (
+    id                      SERIAL PRIMARY KEY,
+    distributore_id         INT NOT NULL UNIQUE REFERENCES distributori(id) ON DELETE CASCADE,
+    stato                   VARCHAR(20) DEFAULT 'sconosciuto'
+                            CHECK (stato IN ('aperto','chiuso','parziale','sconosciuto')),
+    benzina_disponibile     BOOLEAN DEFAULT true,
+    diesel_disponibile      BOOLEAN DEFAULT true,
+    gpl_disponibile         BOOLEAN,
+    metano_disponibile      BOOLEAN,
+    prezzo_benzina          DECIMAL(4,3),   -- es. 1.879
+    prezzo_diesel           DECIMAL(4,3),
+    livello_coda            SMALLINT DEFAULT 0 CHECK (livello_coda BETWEEN 0 AND 3),
+    conferme                INT DEFAULT 0,
+    ultimo_aggiornamento    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================
+-- 3. Segnalazioni utenti (crowdsourcing)
+-- ============================================
+CREATE TABLE segnalazioni_utenti (
+    id                  SERIAL PRIMARY KEY,
+    distributore_id     INT NOT NULL REFERENCES distributori(id) ON DELETE CASCADE,
+    tipo_segnalazione   VARCHAR(30) NOT NULL
+                        CHECK (tipo_segnalazione IN (
+                            'stato','prezzo','coda','carburante_esaurito','riaperto'
+                        )),
+    dettagli            JSONB DEFAULT '{}',
+    session_id          VARCHAR(64),
+    ip_hash             VARCHAR(64),
+    posizione_utente    GEOGRAPHY(POINT, 4326),
+    created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indice per query recenti per distributore
+CREATE INDEX idx_segnalazioni_distributore ON segnalazioni_utenti (distributore_id, created_at DESC);
+
+-- Indice per rate limiting per IP
+CREATE INDEX idx_segnalazioni_ip ON segnalazioni_utenti (ip_hash, created_at DESC);
+
+
+===== sql/002_seed.sql =====
+-- ============================================
+-- Fuel Map Italia â€” Dati di test (zona Roma)
+-- ============================================
+
+INSERT INTO distributori (nome, indirizzo, comune, provincia, posizione, bandiera, self_service) VALUES
+('ENI Via Tuscolana',       'Via Tuscolana 120',        'Roma', 'RM', ST_MakePoint(12.5150, 41.8780)::geography, 'ENI',    true),
+('Q8 Piazza Bologna',      'Piazza Bologna 5',         'Roma', 'RM', ST_MakePoint(12.5170, 41.9100)::geography, 'Q8',     true),
+('IP Tiburtina',            'Via Tiburtina 340',        'Roma', 'RM', ST_MakePoint(12.5320, 41.9050)::geography, 'IP',     true),
+('Tamoil Prenestina',      'Via Prenestina 78',        'Roma', 'RM', ST_MakePoint(12.5280, 41.8920)::geography, 'Tamoil', false),
+('TotalErg Appia',         'Via Appia Nuova 200',      'Roma', 'RM', ST_MakePoint(12.5100, 41.8650)::geography, 'Total',  true),
+('ENI EUR',                'Viale Europa 50',          'Roma', 'RM', ST_MakePoint(12.4680, 41.8310)::geography, 'ENI',    true),
+('Agip Ostia',             'Via del Mare 400',         'Roma', 'RM', ST_MakePoint(12.2890, 41.7350)::geography, 'Agip',   true),
+('Q8 Trastevere',          'Viale Trastevere 180',     'Roma', 'RM', ST_MakePoint(12.4710, 41.8810)::geography, 'Q8',     true),
+('IP Nomentana',           'Via Nomentana 250',        'Roma', 'RM', ST_MakePoint(12.5130, 41.9200)::geography, 'IP',     false),
+('Shell Flaminia',         'Via Flaminia 90',          'Roma', 'RM', ST_MakePoint(12.4750, 41.9350)::geography, 'Shell',  true);
+
+-- Stato operativo iniziale per ogni distributore
+INSERT INTO stato_operativo (distributore_id, stato, benzina_disponibile, diesel_disponibile, gpl_disponibile, metano_disponibile, prezzo_benzina, prezzo_diesel, livello_coda)
+VALUES
+(1,  'aperto',      true,  true,  false, false, 1.879, 1.769, 0),
+(2,  'aperto',      true,  true,  true,  false, 1.899, 1.789, 1),
+(3,  'parziale',    true,  false, false, false, 1.859, NULL,  0),
+(4,  'chiuso',      false, false, false, false, NULL,  NULL,  0),
+(5,  'aperto',      true,  true,  true,  true,  1.849, 1.759, 2),
+(6,  'aperto',      true,  true,  false, false, 1.889, 1.779, 0),
+(7,  'sconosciuto', true,  true,  false, false, 1.869, 1.749, 0),
+(8,  'aperto',      true,  true,  false, false, 1.909, 1.799, 1),
+(9,  'parziale',    false, true,  false, false, NULL,  1.769, 0),
+(10, 'aperto',      true,  true,  true,  false, 1.859, 1.749, 0);
+
+
+===== server/db.js =====
+// ============================================
+// Pool di connessione PostgreSQL
+// ============================================
+const { Pool } = require('pg');
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
+const pool = new Pool({
+    host:     process.env.DB_HOST,
+    port:     parseInt(process.env.DB_PORT, 10),
+    database: process.env.DB_NAME,
+    user:     process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    max:      10,               // connessioni massime nel pool
+    idleTimeoutMillis: 30000,
+});
+
+// Log connessione riuscita (solo al primo tentativo)
+pool.on('connect', () => {
+    console.log('ðŸ“¦ Connesso a PostgreSQL');
+});
+
+pool.on('error', (err) => {
+    console.error('âŒ Errore pool PostgreSQL:', err.message);
+});
+
+module.exports = pool;
+
+
+===== server/index.js =====
+// ============================================
+// Fuel Map Italia â€” Entry Point Server
+// ============================================
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+require('dotenv').config();
+
+const distributoriRoutes = require('./routes/distributori');
+const segnalazioniRoutes = require('./routes/segnalazioni');
+const { initScheduler } = require('./cron/scheduler');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware globali
+app.use(cors());
+app.use(express.json());
+
+// File statici (frontend)
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Rotte API
+app.use('/api/distributori', distributoriRoutes);
+app.use('/api/segnalazioni', segnalazioniRoutes);
+
+// Health check
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Avvio server
+app.listen(PORT, () => {
+    console.log(`ðŸš€ Server avviato su http://localhost:${PORT}`);
+    // Avvia scheduler per aggiornamento automatico prezzi alle 08:35
+    initScheduler();
+});
+
+
+===== server/routes/distributori.js =====
+// ============================================
+// Rotte distributori â€“ query geospaziali
+// ============================================
+
+const express = require('express');
+const router = express.Router();
+const pool = require('../db');
+
+// GET /api/distributori/vicini?lat=41.89&lon=12.49&raggio=5000&carburante=benzina&solo_aperti=true&q=eni
+router.get('/vicini', async (req, res) => {
+    try {
+        const lat = parseFloat(req.query.lat);
+        const lon = parseFloat(req.query.lon);
+        const raggio = parseInt(req.query.raggio, 10) || 5000;
+        const carburante = req.query.carburante;
+        const soloAperti = req.query.solo_aperti === 'true';
+        const queryTesto = req.query.q ? req.query.q.trim() : null;
+
+        if (isNaN(lat) || isNaN(lon)) {
+            return res.status(400).json({ errore: 'Parametri lat e lon obbligatori' });
+        }
+
+        if (lat < 35.5 || lat > 47.1 || lon < 6.6 || lon > 18.5) {
+            return res.status(400).json({ errore: 'Coordinate fuori dal territorio italiano' });
+        }
+
+        const raggioEffettivo = Math.min(raggio, 50000);
+
+        // ESCLUDIAMO SEMPRE I DISTRIBUTORI NASCOSTI O SEGNALATI COME ERRATI
+        let whereClauses = [
+            `d.nascosto = false`,
+            `ST_DWithin(d.posizione, ST_MakePoint($2, $1)::geography, $3)`
+        ];
+        let params = [lat, lon, raggioEffettivo];
+
+        if (soloAperti) {
+            whereClauses.push(`(s.stato IS NULL OR s.stato != 'chiuso')`);
+        }
+
+        if (carburante && ['benzina', 'diesel', 'gpl', 'metano'].includes(carburante.toLowerCase())) {
+            whereClauses.push(`s.${carburante.toLowerCase()}_disponibile = true`);
+        }
+
+        if (queryTesto) {
+            params.push(`%${queryTesto}%`);
+            whereClauses.push(`(d.nome ILIKE $${params.length} OR d.bandiera ILIKE $${params.length} OR d.indirizzo ILIKE $${params.length})`);
+        }
+
+        const querySql = `
+            SELECT 
+                d.id,
+                d.nome,
+                d.indirizzo,
+                d.comune,
+                d.provincia,
+                d.bandiera,
+                d.autostradale,
+                d.self_service,
+                ST_Y(d.posizione::geometry) AS lat,
+                ST_X(d.posizione::geometry) AS lon,
+                ST_Distance(d.posizione, ST_MakePoint($2, $1)::geography) AS distanza_m,
+                s.stato,
+                s.benzina_disponibile,
+                s.diesel_disponibile,
+                s.gpl_disponibile,
+                s.metano_disponibile,
+                s.prezzo_benzina,
+                s.prezzo_diesel,
+                s.prezzo_gpl,
+                s.prezzo_metano,
+                s.livello_coda,
+                s.conferme,
+                s.ultimo_aggiornamento,
+                (
+                    SELECT su.dettagli->>'foto_url'
+                    FROM segnalazioni_utenti su
+                    WHERE su.distributore_id = d.id AND su.dettagli->>'foto_url' IS NOT NULL
+                    ORDER BY su.created_at DESC
+                    LIMIT 1
+                ) AS ultima_foto
+            FROM distributori d
+            LEFT JOIN stato_operativo s ON s.distributore_id = d.id
+            WHERE ${whereClauses.join(' AND ')}
+            ORDER BY distanza_m ASC
+            LIMIT 150
+        `;
+
+        const result = await pool.query(querySql, params);
+        res.json({
+            totale: result.rows.length,
+            raggio_m: raggioEffettivo,
+            distributori: result.rows
+        });
+
+    } catch (err) {
+        console.error('Errore query distributori vicini:', err.message);
+        res.status(500).json({ errore: 'Errore interno del server' });
+    }
+});
+
+// GET /api/distributori/:id â€“ dettaglio singolo
+router.get('/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) {
+            return res.status(400).json({ errore: 'ID non valido' });
+        }
+
+        const result = await pool.query(`
+            SELECT 
+                d.id,
+                d.nome,
+                d.indirizzo,
+                d.comune,
+                d.provincia,
+                d.bandiera,
+                d.autostradale,
+                d.self_service,
+                ST_Y(d.posizione::geometry) AS lat,
+                ST_X(d.posizione::geometry) AS lon,
+                s.stato,
+                s.benzina_disponibile,
+                s.diesel_disponibile,
+                s.gpl_disponibile,
+                s.metano_disponibile,
+                s.prezzo_benzina,
+                s.prezzo_diesel,
+                s.prezzo_gpl,
+                s.prezzo_metano,
+                s.livello_coda,
+                s.conferme,
+                s.ultimo_aggiornamento
+            FROM distributori d
+            LEFT JOIN stato_operativo s ON s.distributore_id = d.id
+            WHERE d.id = $1 AND d.nascosto = false
+        `, [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ errore: 'Distributore non trovato' });
+        }
+
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Errore dettaglio distributore:', err.message);
+        res.status(500).json({ errore: 'Errore interno del server' });
+    }
+});
+
+// GET /api/distributori/:id/storico â€“ andamento prezzi ultimi 7-14 giorni
+router.get('/:id/storico', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) {
+            return res.status(400).json({ errore: 'ID non valido' });
+        }
+
+        const result = await pool.query(`
+            SELECT 
+                TO_CHAR(data_rilevazione, 'YYYY-MM-DD') AS data,
+                TO_CHAR(data_rilevazione, 'Dy') AS giorno_settimana,
+                prezzo_benzina,
+                prezzo_diesel,
+                prezzo_gpl,
+                prezzo_metano
+            FROM storico_prezzi
+            WHERE distributore_id = $1
+            ORDER BY data_rilevazione ASC
+            LIMIT 14
+        `, [id]);
+
+        res.json({
+            distributore_id: id,
+            storico: result.rows
+        });
+    } catch (err) {
+        console.error('Errore storico distributore:', err.message);
+        res.status(500).json({ errore: 'Errore interno del server' });
+    }
+});
+
+// POST /api/distributori/percorso â€“ cerca distributori lungo una rotta GeoJSON
+router.post('/percorso', async (req, res) => {
+    try {
+        const { geojson, carburante, buffer_m = 2500, preferenza = 'tutte' } = req.body;
+
+        if (!geojson || !geojson.coordinates || !Array.isArray(geojson.coordinates)) {
+            return res.status(400).json({ errore: 'Tracciato GeoJSON non valido' });
+        }
+
+        const bufferEffettivo = Math.min(Math.max(parseInt(buffer_m, 10) || 2000, 500), 4000);
+        let carbClause = '';
+        let preferenzaClause = '';
+        let orderClause = 'ORDER BY d.autostradale DESC, LEAST(s.prezzo_benzina, s.prezzo_diesel) ASC NULLS LAST';
+
+        if (preferenza === 'solo_autostrada') {
+            preferenzaClause = 'AND d.autostradale = true';
+        } else if (preferenza === 'risparmio') {
+            preferenzaClause = 'AND d.autostradale = false';
+        }
+
+        if (carburante && ['benzina', 'diesel', 'gpl', 'metano'].includes(carburante.toLowerCase())) {
+            const c = carburante.toLowerCase();
+            carbClause = `AND s.${c}_disponibile = true AND s.prezzo_${c} IS NOT NULL`;
+            orderClause = (preferenza === 'solo_autostrada' || preferenza === 'risparmio')
+                ? `ORDER BY s.prezzo_${c} ASC`
+                : `ORDER BY d.autostradale DESC, s.prezzo_${c} ASC`;
+        }
+
+        const querySql = `
+            SELECT 
+                d.id,
+                d.nome,
+                d.indirizzo,
+                d.comune,
+                d.provincia,
+                d.bandiera,
+                d.autostradale,
+                d.self_service,
+                ST_Y(d.posizione::geometry) AS lat,
+                ST_X(d.posizione::geometry) AS lon,
+                s.stato,
+                s.benzina_disponibile,
+                s.diesel_disponibile,
+                s.gpl_disponibile,
+                s.metano_disponibile,
+                s.prezzo_benzina,
+                s.prezzo_diesel,
+                s.prezzo_gpl,
+                s.prezzo_metano,
+                s.livello_coda,
+                s.conferme,
+                ROUND(ST_Distance(d.posizione, ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)::geography)) AS dist_tracciato_m
+            FROM distributori d
+            JOIN stato_operativo s ON s.distributore_id = d.id
+            WHERE d.nascosto = false
+              AND (s.stato IS NULL OR s.stato != 'chiuso')
+              AND ST_DWithin(d.posizione, ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)::geography, $2)
+              ${carbClause}
+              ${preferenzaClause}
+            ${orderClause}
+            LIMIT 60
+        `;
+
+        const result = await pool.query(querySql, [JSON.stringify(geojson), bufferEffettivo]);
+
+        res.json({
+            totale: result.rows.length,
+            distributori: result.rows
+        });
+
+    } catch (err) {
+        console.error('Errore ricerca su percorso:', err.message);
+        res.status(500).json({ errore: 'Errore durante la ricerca sul percorso' });
+    }
+});
+
+module.exports = router;
+
+===== server/routes/segnalazioni.js =====
+// ============================================================
+// Rotte segnalazioni â€“ Motore di Consenso + Posizione Errata
+// ============================================================
+
+const express = require('express');
+const router = express.Router();
+const crypto = require('crypto');
+const path = require('path');
+const multer = require('multer');
+const pool = require('../db');
+const rateLimiter = require('../middleware/rateLimiter');
+
+// Configurazione Upload Foto con Multer
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, path.join(__dirname, '..', '..', 'public', 'uploads'));
+    },
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+        const uniqueName = `report_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
+        cb(null, uniqueName);
+    }
+});
+
+const upload = multer({
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // Max 5 MB
+    fileFilter: (req, file, cb) => {
+        const allowed = /jpeg|jpg|png|webp/;
+        const mime = allowed.test(file.mimetype);
+        const ext = allowed.test(path.extname(file.originalname).toLowerCase());
+        if (mime && ext) return cb(null, true);
+        cb(new Error('Formato immagine non supportato. Usa JPG, PNG o WebP.'));
+    }
+});
+
+// POST /api/segnalazioni
+router.post('/', rateLimiter, upload.single('foto'), async (req, res) => {
+    const client = await pool.connect();
+    try {
+        let { 
+            distributore_id, 
+            tipo_segnalazione, 
+            dettagli,
+            lat_utente,
+            lon_utente
+        } = req.body;
+
+        if (typeof dettagli === 'string') {
+            try { dettagli = JSON.parse(dettagli); } catch (e) { dettagli = {}; }
+        } else if (!dettagli) {
+            dettagli = {};
+        }
+
+        distributore_id = parseInt(distributore_id, 10);
+        if (!distributore_id || !tipo_segnalazione) {
+            return res.status(400).json({ errore: 'distributore_id e tipo_segnalazione obbligatori' });
+        }
+
+        if (req.file) {
+            dettagli.foto_url = `/uploads/${req.file.filename}`;
+        }
+
+        const distCheck = await client.query('SELECT id FROM distributori WHERE id = $1', [distributore_id]);
+        if (distCheck.rows.length === 0) {
+            return res.status(404).json({ errore: 'Distributore non trovato' });
+        }
+
+        const sessionId = req.headers['x-session-id'] || req.body.session_id || crypto.randomUUID();
+        const ipRaw = req.ip || req.connection.remoteAddress || '0.0.0.0';
+        const ipHash = crypto.createHash('sha256').update(ipRaw).digest('hex').substring(0, 16);
+
+        await client.query('BEGIN');
+
+        const posizioneUtente = (lat_utente && lon_utente)
+            ? `ST_MakePoint(${parseFloat(lon_utente)}, ${parseFloat(lat_utente)})::geography`
+            : 'NULL';
+
+        // 1. Inserimento segnalazione
+        await client.query(`
+            INSERT INTO segnalazioni_utenti 
+                (distributore_id, tipo_segnalazione, dettagli, session_id, ip_hash, posizione_utente)
+            VALUES ($1, $2, $3, $4, $5, ${posizioneUtente})
+        `, [
+            distributore_id,
+            tipo_segnalazione,
+            JSON.stringify(dettagli),
+            sessionId,
+            ipHash
+        ]);
+
+        // 2. SE Ãˆ UNA SEGNALAZIONE DI POSIZIONE ERRATA
+        if (tipo_segnalazione === 'posizione_errata') {
+            await client.query(`
+                UPDATE distributori
+                SET 
+                    segnalazioni_errore = segnalazioni_errore + 1,
+                    nascosto = CASE WHEN segnalazioni_errore + 1 >= 3 THEN true ELSE nascosto END
+                WHERE id = $1
+            `, [distributore_id]);
+
+            await client.query('COMMIT');
+            return res.status(201).json({
+                messaggio: 'Segnalazione di posizione errata registrata. Grazie per il supporto!'
+            });
+        }
+
+        // 3. ALGORITMO DI CONSENSO NORMALE (Stato / Carburante / Coda)
+        const consensusResult = await client.query(`
+            SELECT 
+                COUNT(*) FILTER (WHERE tipo_segnalazione IN ('riaperto') OR (tipo_segnalazione = 'stato' AND dettagli->>'stato' = 'aperto')) AS voti_aperto,
+                COUNT(*) FILTER (WHERE tipo_segnalazione = 'stato' AND dettagli->>'stato' = 'chiuso') AS voti_chiuso,
+                COUNT(*) FILTER (WHERE tipo_segnalazione = 'carburante_esaurito' AND dettagli->>'carburante' = 'benzina') AS voti_no_benzina,
+                COUNT(*) FILTER (WHERE tipo_segnalazione = 'carburante_esaurito' AND dettagli->>'carburante' = 'diesel') AS voti_no_diesel,
+                ROUND(AVG((dettagli->>'livello')::numeric) FILTER (WHERE tipo_segnalazione = 'coda')) AS media_coda,
+                COUNT(*) AS totale_segnalazioni_recenti
+            FROM segnalazioni_utenti
+            WHERE distributore_id = $1 
+              AND created_at >= NOW() - INTERVAL '90 minutes'
+        `, [distributore_id]);
+
+        const c = consensusResult.rows[0];
+        const votiAperto = parseInt(c.voti_aperto, 10) || 0;
+        const votiChiuso = parseInt(c.voti_chiuso, 10) || 0;
+        const votiNoBenzina = parseInt(c.voti_no_benzina, 10) || 0;
+        const votiNoDiesel = parseInt(c.voti_no_diesel, 10) || 0;
+        const mediaCoda = c.media_coda !== null ? parseInt(c.media_coda, 10) : null;
+
+        let nuovoStato = 'aperto';
+        if (votiChiuso > votiAperto) {
+            nuovoStato = 'chiuso';
+        } else if (votiChiuso > 0 && votiChiuso === votiAperto) {
+            nuovoStato = 'parziale';
+        }
+
+        const benzinaDisponibile = votiNoBenzina < 2;
+        const dieselDisponibile = votiNoDiesel < 2;
+
+        let updateSql = `
+            UPDATE stato_operativo 
+            SET 
+                stato = $2,
+                benzina_disponibile = $3,
+                diesel_disponibile = $4,
+                conferme = conferme + 1,
+                ultimo_aggiornamento = NOW()
+        `;
+        let updateParams = [distributore_id, nuovoStato, benzinaDisponibile, dieselDisponibile];
+
+        if (mediaCoda !== null) {
+            updateSql += `, livello_coda = $${updateParams.length + 1}`;
+            updateParams.push(mediaCoda);
+        }
+
+        updateSql += ` WHERE distributore_id = $1`;
+        await client.query(updateSql, updateParams);
+
+        await client.query('COMMIT');
+
+        res.status(201).json({
+            messaggio: 'Segnalazione registrata con successo',
+            consenso: {
+                stato: nuovoStato,
+                voti_aperto: votiAperto,
+                voti_chiuso: votiChiuso,
+                livello_coda: mediaCoda
+            },
+            foto_url: dettagli.foto_url || null
+        });
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Errore elaborazione segnalazione:', err.message);
+        res.status(500).json({ errore: err.message || 'Errore interno del server' });
+    } finally {
+        if (client) client.release();
+    }
+});
+
+module.exports = router;
+
+===== server/middleware/rateLimiter.js =====
+// ============================================
+// Rate Limiter â€” max 10 segnalazioni/ora per IP
+// ============================================
+const rateLimit = require('express-rate-limit');
+
+const segnalazioniLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,   // 1 ora
+    max: 10,                     // max 10 richieste per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        errore: 'Troppe segnalazioni. Riprova tra un\'ora.'
+    }
+});
+
+module.exports = segnalazioniLimiter;
+
+
+===== server/cron/scheduler.js =====
+// ============================================================
+// Scheduler Cron â€” Aggiornamento Prezzi + Riapertura Automatica
+// ============================================================
+const cron = require('node-cron');
+const { runPrezziImport } = require('../scripts/importPrezzi');
+const pool = require('../db');
+
+async function autoReopenStations() {
+    try {
+        // Riapre le stazioni chiuse da piÃ¹ di 12 ore (chiusure crowdsourcing scadute)
+        const result = await pool.query(`
+            UPDATE stato_operativo
+            SET stato = 'aperto', ultimo_aggiornamento = NOW()
+            WHERE stato = 'chiuso'
+              AND ultimo_aggiornamento < NOW() - INTERVAL '12 hours'
+        `);
+        if (result.rowCount > 0) {
+            console.log(`ðŸ”“ [Cron] ${result.rowCount} stazioni riaperte automaticamente (chiuse da >12h)`);
+        }
+    } catch (err) {
+        console.error('âŒ [Cron] Errore riapertura automatica:', err.message);
+    }
+}
+
+function initScheduler() {
+    // Ogni mattina alle 08:35 â€” aggiornamento prezzi MIMIT
+    cron.schedule('35 8 * * *', async () => {
+        console.log('â° [Cron] Avvio aggiornamento automatico giornaliero prezzi MIMIT...');
+        try {
+            await runPrezziImport({ closePool: false });
+        } catch (err) {
+            console.error('âŒ [Cron] Errore sincronizzazione giornaliera:', err.message);
+        }
+    }, {
+        scheduled: true,
+        timezone: 'Europe/Rome'
+    });
+
+    // Ogni 2 ore â€” riapertura automatica stazioni chiuse da >12h
+    cron.schedule('0 */2 * * *', autoReopenStations, {
+        scheduled: true,
+        timezone: 'Europe/Rome'
+    });
+
+    console.log('ðŸ“… Scheduler attivo: prezzi 08:35, riapertura auto ogni 2h.');
+}
+
+module.exports = { initScheduler };
+
+
+===== public/index.html =====
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#FAFAFA">
+    <title>Fuel Map Italia</title>
+
+    <!-- PWA & Mobile Meta -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <link rel="apple-touch-icon" href="/icon.svg">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="FuelMap">
+
+    <!-- Inter font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+    <!-- App CSS -->
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+    <!-- Mappa a tutto schermo -->
+    <div id="map"></div>
+
+    <!-- Header di navigazione: ricerca + menÃ¹ a tendina filtri -->
+    <header class="top-nav">
+        <div class="search-bar">
+            <div class="search-inner">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="text" id="searchInput" class="search-input" placeholder="Cerca distributore, cittÃ  o brand..." autocomplete="off">
+                <button type="button" id="btnClearSearch" class="btn-clear-search hidden" title="Cancella">âœ•</button>
+            </div>
+            
+        </div>
+
+        <!-- Filtri Rapidi a Chip -->
+        <div class="filters-scroll-wrap">
+            <div class="filters-scroll">
+                <button class="filter-chip filter-chip-crown" data-filtro="economico">ðŸ‘‘ PiÃ¹ Economico</button>
+                <button class="filter-chip" data-filtro="benzina">â›½ Benzina</button>
+                <button class="filter-chip" data-filtro="diesel">â›½ Diesel</button>
+                <button class="filter-chip" data-filtro="gpl">ðŸ’§ GPL</button>
+                <button class="filter-chip" data-filtro="metano">ðŸ’¨ Metano</button>
+                <button class="filter-chip" data-filtro="chiusi">ðŸ”´ Mostra Chiusi</button>
+            </div>
+            <div class="scroll-fade-hint"></div>
+        </div>
+
+        <!-- Pulsante Cerca in questa zona -->
+        <button id="btnSearchArea" class="btn-search-area hidden">
+            <span>ðŸ” Cerca in quest'area</span>
+        </button>
+    </header>
+
+    <!-- Controlli Flottanti Laterali (Stile Google Maps / Waze) -->
+    <aside class="floating-controls-stack">
+        <button class="fab-btn" id="btnOpenRoute" title="Trova pompe lungo il percorso (A âž” B)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/>
+                <path d="M6 15v-4a4 4 0 0 1 4-4h4"/>
+            </svg>
+        </button>
+        <button class="fab-btn" id="btnLocate" title="La mia posizione (GPS)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
+            </svg>
+        </button>
+        <button class="fab-btn" id="btnSatellite" title="Vista Satellite">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="10" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/>
+            </svg>
+        </button>
+        <button class="fab-btn" id="btnTheme" title="ModalitÃ  Notturna">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+        </button>
+    </aside>
+
+    <!-- Modal Ricerca Pompe lungo il Percorso -->
+    <div class="route-modal-card hidden" id="routeModalCard">
+        <div class="route-modal-header">
+            <div class="route-title-wrap">
+                <span class="route-badge-icon">ðŸš—</span>
+                <h3>Pompe sul Percorso</h3>
+            </div>
+            <button type="button" class="btn-close-route" id="btnCloseRoute">âœ•</button>
+        </div>
+        <div class="route-inputs-body">
+            <div class="route-input-group">
+                <span class="route-dot green">â—</span>
+                <input type="text" id="routeStartInput" placeholder="Partenza (es. Posizione attuale o Roma)" autocomplete="off" />
+            </div>
+            <div class="route-input-group">
+                <span class="route-dot red">ðŸ“</span>
+                <input type="text" id="routeDestInput" placeholder="Destinazione (es. Firenze, Milano...)" autocomplete="off" />
+            </div>
+            <div class="route-carb-row">
+                <label for="routeCarbSelect">Carburante:</label>
+                <select id="routeCarbSelect">
+                    <option value="benzina">â›½ Benzina</option>
+                    <option value="diesel">â›½ Diesel</option>
+                    <option value="gpl">ðŸ’§ GPL</option>
+                    <option value="metano">ðŸ’¨ Metano</option>
+                </select>
+            </div>
+            <div class="route-carb-row">
+                <label for="routeTypeSelect">Impianti:</label>
+                <select id="routeTypeSelect">
+                    <option value="tutte">âœ¨ Autostrada + Uscite vicine</option>
+                    <option value="solo_autostrada">ðŸ›£ï¸ Solo in Autostrada (no caselli)</option>
+                    <option value="risparmio">ðŸ’° Max Risparmio (fuori casello)</option>
+                </select>
+            </div>
+            
+            <!-- Pit-Stop Planner: Autonomia Residua -->
+            <div class="route-autonomy-box">
+                <div class="autonomy-header">
+                    <label for="inputAutonomia">â›½ Autonomia residua stimata:</label>
+                    <span class="autonomy-val-badge" id="lblAutonomiaVal">250 km</span>
+                </div>
+                <input type="range" id="inputAutonomia" min="50" max="800" step="25" value="250" class="autonomy-slider">
+                <div class="autonomy-legend">
+                    <span>50 km (Riserva)</span>
+                    <span>Pieno (800 km)</span>
+                </div>
+            </div>
+            <button type="button" class="btn-calc-route" id="btnCalcRoute">
+                <span>ðŸ” Trova Pompe sul Percorso</span>
+            </button>
+            <button type="button" class="btn-clear-route hidden" id="btnClearRoute">
+                <span>âœ• Rimuovi Percorso</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Pill di stato in basso -->
+    <div class="status-pill" id="statusPill">
+        <span class="pill-dot"></span>
+        <span class="pill-text">Cercando distributori...</span>
+    </div>
+
+    <!-- Bottom Sheet Restyled -->
+    <div class="bottom-sheet-overlay" id="sheetOverlay"></div>
+    <div class="bottom-sheet" id="bottomSheet">
+        <!-- Maniglia di trascinamento e tasto chiudi -->
+        <div class="sheet-top-bar">
+            <div class="sheet-handle"></div>
+            <button type="button" class="btn-sheet-close" id="btnCloseSheet" title="Chiudi">âœ•</button>
+        </div>
+
+        <!-- Header Distributore -->
+        <div class="sheet-header">
+            <div class="sheet-brand-row">
+                <span class="sheet-brand-tag" id="sheetBrandTag">â›½ Brand</span>
+                <div class="header-badges-wrap">
+                    <span class="sheet-cheapest-badge hidden" id="sheetCheapestBadge">ðŸ‘‘ Miglior Prezzo</span>
+                    <span class="sheet-badge" id="sheetBadge">â€”</span>
+                </div>
+            </div>
+            <h2 class="sheet-nome" id="sheetNome">â€”</h2>
+            <p class="sheet-indirizzo" id="sheetIndirizzo">â€”</p>
+            <div class="sheet-meta-row">
+                <span class="sheet-distanza" id="sheetDistanza">ðŸ“ â€” da te</span>
+                <span class="sheet-dot">â€¢</span>
+                <span class="sheet-conferme" id="sheetConferme">0 feedback</span>
+            </div>
+
+            <!-- Tasti Azione: Navigazione + Condividi WhatsApp -->
+            <div class="sheet-actions-row">
+                <a id="btnNavigate" class="btn-navigate" href="#" target="_blank" rel="noopener">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+                    </svg>
+                    <span>Naviga</span>
+                </a>
+                <button type="button" id="btnShareStation" class="btn-share" title="Condividi">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                    </svg>
+                    <span>Condividi</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Sezione Foto Recente se disponibile -->
+        <div class="sheet-section" id="photoSection">
+            <div class="photo-preview-card">
+                <img id="imgStationPhoto" src="" alt="Foto reale">
+                <span class="photo-badge">â›½ Foto Brand</span>
+                <a id="btnStreetView" class="btn-streetview-pill" href="#" target="_blank" rel="noopener" title="Apri Google Street View a 360Â°">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/>
+                    </svg>
+                    <span>Vista 360Â°</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Prezzi e DisponibilitÃ  Carburanti -->
+        <div class="sheet-section">
+            <div class="section-header-row">
+                <h3 class="sheet-section-title">Prezzi & DisponibilitÃ </h3>
+                <span class="section-subtitle">Aggiornati oggi</span>
+            </div>
+            <div class="fuel-grid" id="fuelGrid"></div>
+        </div>
+
+        <!-- Grafico Andamento Prezzo Settimanale -->
+        <div class="sheet-section" id="chartSection">
+            <div class="weekly-chart-card">
+                <div class="weekly-chart-header">
+                    <span class="weekly-chart-title">ðŸ“ˆ Andamento ultimi 7 giorni</span>
+                    <span class="weekly-chart-sub" id="chartTrendSummary">Stabile</span>
+                </div>
+                <div class="weekly-svg-wrap" id="chartSvgWrap"></div>
+                <div class="weekly-days-row">
+                    <span>Lun</span><span>Mar</span><span>Mer</span><span>Gio</span><span>Ven</span><span>Sab</span><span>Dom</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calcolatore Risparmio su un Pieno -->
+        <div class="sheet-section" id="savingsSection">
+            <div class="savings-card">
+                <div class="savings-card-top">
+                    <span class="savings-title">ðŸ’° Risparmio stimato sul pieno</span>
+                    <span class="savings-amount-badge" id="savingsAmountBadge">â€”</span>
+                </div>
+                <div class="savings-pills-row">
+                    <span class="savings-label">Serbatoio:</span>
+                    <button type="button" class="tank-pill" data-litri="40">40 L</button>
+                    <button type="button" class="tank-pill active" data-litri="50">50 L</button>
+                    <button type="button" class="tank-pill" data-litri="60">60 L</button>
+                    <button type="button" class="tank-pill" data-litri="70">70 L</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Traffico & Coda alle Pompe -->
+        <div class="sheet-section">
+            <div class="section-header-row">
+                <h3 class="sheet-section-title">Attesa alle Pompe</h3>
+                <span class="queue-status-text" id="queueStatusText">Scorrevole</span>
+            </div>
+            <div class="queue-stepper" id="queueIndicator">
+                <div class="step-bar" data-step="1"></div>
+                <div class="step-bar" data-step="2"></div>
+                <div class="step-bar" data-step="3"></div>
+            </div>
+        </div>
+
+        <!-- Form Segnalazione Rapida -->
+        <div class="sheet-section sheet-section-feedback">
+            <div class="section-header-row">
+                <h3 class="sheet-section-title">Aiuta la Community</h3>
+                <span class="section-subtitle">Aggiorna lo stato</span>
+            </div>
+
+            <!-- Stato Impianto -->
+            <div class="report-segmented-control">
+                <button type="button" class="segment-btn segment-aperto" data-group="stato" data-val="aperto">
+                    <span class="icon">âœ“</span>
+                    <span>Ãˆ Aperto</span>
+                </button>
+                <button type="button" class="segment-btn segment-chiuso" data-group="stato" data-val="chiuso">
+                    <span class="icon">âœ•</span>
+                    <span>Ãˆ Chiuso</span>
+                </button>
+            </div>
+
+            <!-- Pompe Esaurite & Coda -->
+            <div class="quick-tags-wrap">
+                <button type="button" class="tag-chip" data-group="pompa" data-val="benzina">
+                    <span>â›½ Benzina a secco</span>
+                </button>
+                <button type="button" class="tag-chip" data-group="pompa" data-val="diesel">
+                    <span>â›½ Diesel a secco</span>
+                </button>
+                <button type="button" class="tag-chip" data-group="coda" data-val="2">
+                    <span>ðŸš— Coda lunga</span>
+                </button>
+                <button type="button" class="tag-chip" data-group="coda" data-val="0">
+                    <span>ðŸŸ¢ Zero fila</span>
+                </button>
+            </div>
+
+            <!-- Upload Foto Pulito -->
+            <div class="photo-upload-modern">
+                <input type="file" id="inputPhoto" accept="image/*" class="hidden">
+                <button type="button" class="btn-attach-modern" id="btnTriggerPhoto">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                    </svg>
+                    <span>Allega foto cartello o pompe</span>
+                </button>
+                <div class="photo-preview-wrap hidden" id="photoPreviewWrap">
+                    <img id="imgPreviewUpload" src="" alt="Anteprima">
+                    <button type="button" class="btn-remove-photo" id="btnRemovePhoto" title="Rimuovi">âœ•</button>
+                </div>
+            </div>
+
+            <!-- CTA Invio -->
+            <button type="button" class="btn-submit-report disabled" id="btnSubmitReport" disabled>
+                <span>Conferma Segnalazione</span>
+            </button>
+        </div>
+
+        <div class="sheet-footer">
+            <p class="sheet-aggiornamento" id="sheetAggiornamento">â€”</p>
+        </div>
+    </div>
+
+    <!-- Toast notifica -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet MarkerCluster JS -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <!-- App JS -->
+    <script src="/js/api.js"></script>
+    <script src="/js/map.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>
+
+
+===== public/js/api.js =====
+// ============================================
+// API Wrapper â€” chiamate al backend
+// ============================================
+const API = {
+    baseUrl: '',
+
+    async getDistributoriVicini(lat, lon, raggio = 10000, filters = {}) {
+        const params = new URLSearchParams({
+            lat,
+            lon,
+            raggio
+        });
+
+        if (filters.carburante) params.append('carburante', filters.carburante);
+        if (filters.soloAperti) params.append('solo_aperti', 'true');
+        if (filters.q) params.append('q', filters.q);
+
+        const url = `${this.baseUrl}/api/distributori/vicini?${params.toString()}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Errore API: ${res.status}`);
+        return res.json();
+    },
+
+    async getDistributore(id) {
+        const res = await fetch(`${this.baseUrl}/api/distributori/${id}`);
+        if (!res.ok) throw new Error(`Errore API: ${res.status}`);
+        return res.json();
+    },
+
+    async getStoricoDistributore(id) {
+        const res = await fetch(`${this.baseUrl}/api/distributori/${id}/storico`);
+        if (!res.ok) throw new Error(`Errore API: ${res.status}`);
+        return res.json();
+    },
+
+    async getDistributoriSuPercorso(geojson, carburante = 'benzina', preferenza = 'tutte') {
+        const res = await fetch(`${this.baseUrl}/api/distributori/percorso`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ geojson, carburante, buffer_m: 2500, preferenza })
+        });
+        if (!res.ok) throw new Error(`Errore calcolo percorso: ${res.status}`);
+        return res.json();
+    },
+
+    async geocode(query) {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Italia')}&limit=1`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Errore geocodifica cittÃ ');
+        const data = await res.json();
+        if (!data || data.length === 0) throw new Error(`CittÃ  "${query}" non trovata`);
+        return {
+            lat: parseFloat(data[0].lat),
+            lon: parseFloat(data[0].lon),
+            nome: data[0].display_name
+        };
+    },
+
+    async getOsrmRoute(startLon, startLat, endLon, endLat) {
+        const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Impossibile tracciare il percorso stradale');
+        const data = await res.json();
+        if (!data.routes || data.routes.length === 0) throw new Error('Nessuna rotta stradale trovata');
+        return data.routes[0];
+    },
+
+    async inviaSegnalazione(data, file = null) {
+        const sessionId = this.getSessionId();
+        let body;
+        let headers = {
+            'X-Session-Id': sessionId
+        };
+
+        if (file) {
+            // Invio multipart con file
+            const formData = new FormData();
+            formData.append('distributore_id', data.distributore_id);
+            formData.append('tipo_segnalazione', data.tipo_segnalazione);
+            formData.append('dettagli', JSON.stringify(data.dettagli || {}));
+            if (data.lat_utente) formData.append('lat_utente', data.lat_utente);
+            if (data.lon_utente) formData.append('lon_utente', data.lon_utente);
+            formData.append('foto', file);
+            body = formData;
+        } else {
+            // Invio JSON classico
+            headers['Content-Type'] = 'application/json';
+            body = JSON.stringify(data);
+        }
+
+        const res = await fetch(`${this.baseUrl}/api/segnalazioni`, {
+            method: 'POST',
+            headers,
+            body
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.errore || `Errore ${res.status}`);
+        }
+        return res.json();
+    },
+
+    getSessionId() {
+        let id = localStorage.getItem('fuelmap_session');
+        if (!id) {
+            id = crypto.randomUUID();
+            localStorage.setItem('fuelmap_session', id);
+        }
+        return id;
+    }
+};
+
+
+===== public/js/app.js =====
+// ============================================
+// App â€“ logica principale
+// ============================================
+
+// Catalogo foto ad alta risoluzione per marchio
+const BRAND_PHOTOS = {
+    eni:      'https://investiuser.blob.core.windows.net/public/img/art/xl/21102020110644shutterstock670845049-scaled.jpg',
+    q8:       'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQwfPBrpssr0Mk517lbr0XU_Mu7_Wv7JU5IMaP45XHVgg&s=10',
+    ip:       'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTC9ZQ--ZwvpHSMltJ2fE3JIbpIyQkW9oGJmSVcoZzxxg&s=10',
+    tamoil:   'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQZNpoLK6WrO8Uz_RVt-Jx4Rsu-Bxo2XHvNlxTZ_-1bog&s=10',
+    esso:     'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSyJH914sDK3Onv5cduWkU5YyqcZKuK97wOxh1xYE0gpQ&s',
+    total:    'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSxoAX-X-xqTxbB9aYXmhlfAa5iS26w3tXx65JTR_relA&s=10',
+    shell:    'https://www.shell.it/business-customers/shell-fuel-card/helpful-tools/station-locator-and-route-planner/_jcr_content/root/metadata.shellimg.jpeg/1680883986015/shell-station-sunset.jpeg',
+    default:  'https://images.unsplash.com/photo-1545459720-aac8509eb02c?auto=format&fit=crop&w=800&q=80'
+};
+
+function getBrandPhoto(bandiera) {
+    if (!bandiera) return BRAND_PHOTOS.default;
+    const b = bandiera.toLowerCase();
+    for (const key of Object.keys(BRAND_PHOTOS)) {
+        if (b.includes(key)) return BRAND_PHOTOS[key];
+    }
+    return BRAND_PHOTOS.default;
+}
+
+const App = {
+    currentDistributore: null,
+    currentLat: 41.9028,
+    currentLon: 12.4964,
+    isRouteModeActive: false,
+    currentRouteStart: null,
+    currentRouteDest: null,
+    activeFilters: {
+        soloAperti: true,
+        soloEconomico: false,
+        carburante: null,
+        mostraChiusi: false,
+        q: ''
+    },
+    selectedPhotoFile: null,
+    selectedTankLiters: 50,
+    currentAveragePrice: null,
+    cheapestStationId: null,
+    currentReportState: {
+        stato: null,
+        benzina_esaurita: false,
+        diesel_esaurito: false,
+        coda: null
+    },
+    searchDebounceTimer: null,
+    moveDebounceTimer: null,
+
+    init() {
+        FuelMap.init();
+        this.bindEvents();
+        this.locateUser();
+
+        // Registrazione Service Worker per PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch((err) => {
+                console.warn('Service Worker non registrato:', err);
+            });
+        }
+    },
+
+    bindEvents() {
+        // Bottone localizzazione
+        document.getElementById('btnLocate').addEventListener('click', () => {
+            this.locateUser();
+        });
+
+        // Bottone Vista Satellite
+        const btnSat = document.getElementById('btnSatellite');
+        if (btnSat) {
+            btnSat.addEventListener('click', () => {
+                const active = FuelMap.toggleSatellite();
+                btnSat.classList.toggle('active', active);
+            });
+        }
+
+        // Bottone ModalitÃ  Notturna (Dark Mode) con Auto-Rilevamento
+        const btnTheme = document.getElementById('btnTheme');
+        if (btnTheme) {
+            btnTheme.addEventListener('click', () => {
+                const isDark = FuelMap.toggleDarkMode();
+                document.body.classList.toggle('dark-theme', isDark);
+                btnTheme.classList.toggle('active', isDark);
+                localStorage.setItem('fuelmap_theme', isDark ? 'dark' : 'light');
+            });
+            // Auto-adattamento Light/Dark Mode (Sensore di sistema o Orario 19:30-07:00)
+            this.initAutoTheme(btnTheme);
+        }
+
+        // Tasto Condividi (Web Share API)
+        const btnShare = document.getElementById('btnShareStation');
+        if (btnShare) {
+            btnShare.addEventListener('click', () => {
+                this.shareCurrentStation();
+            });
+        }
+
+        // Selettore Litri Serbatoio per Calcolatore Risparmio
+        document.querySelectorAll('.tank-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                document.querySelectorAll('.tank-pill').forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+                this.selectedTankLiters = parseInt(pill.dataset.litri, 10);
+                this.updateSavingsBadge();
+            });
+        });
+
+        // Bottone Cerca in quest'area
+        const btnSearchArea = document.getElementById('btnSearchArea');
+        if (btnSearchArea) {
+            btnSearchArea.addEventListener('click', () => {
+                btnSearchArea.classList.add('hidden');
+                const { lat, lon, radius } = FuelMap.getCenterAndRadius();
+                this.loadDistributori(lat, lon, radius);
+            });
+        }
+
+        // Input Ricerca con Debounce
+        const searchInput = document.getElementById('searchInput');
+        const btnClear = document.getElementById('btnClearSearch');
+        if (searchInput && btnClear) {
+            searchInput.addEventListener('input', (e) => {
+                const val = e.target.value.trim();
+                btnClear.classList.toggle('hidden', val.length === 0);
+
+                clearTimeout(this.searchDebounceTimer);
+                this.searchDebounceTimer = setTimeout(() => {
+                    this.activeFilters.q = val;
+                    this.loadDistributori(this.currentLat, this.currentLon);
+                }, 300);
+            });
+
+            btnClear.addEventListener('click', () => {
+                searchInput.value = '';
+                btnClear.classList.add('hidden');
+                this.activeFilters.q = '';
+                this.loadDistributori(this.currentLat, this.currentLon);
+            });
+        }
+
+        // Gestione Filtri a Chip
+        document.querySelectorAll('.filter-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const filtro = chip.dataset.filtro;
+                const wasActive = chip.classList.contains('active');
+
+                // Deseleziona tutti i chip
+                document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+
+                // Reset filtri (default: solo aperti)
+                this.activeFilters.soloAperti = true;
+                this.activeFilters.soloEconomico = false;
+                this.activeFilters.carburante = null;
+                this.activeFilters.mostraChiusi = false;
+
+                // Se non era giÃ  attivo, attiva il filtro selezionato
+                if (!wasActive) {
+                    chip.classList.add('active');
+                    if (filtro === 'economico') {
+                        this.activeFilters.soloEconomico = true;
+                    } else if (filtro === 'chiusi') {
+                        this.activeFilters.soloAperti = false;
+                        this.activeFilters.mostraChiusi = true;
+                    } else if (['benzina', 'diesel', 'gpl', 'metano'].includes(filtro)) {
+                        this.activeFilters.carburante = filtro;
+                    }
+                }
+
+                // Ricarica i distributori sulla mappa con i nuovi filtri
+                this.loadDistributori(this.currentLat, this.currentLon);
+            });
+        });
+
+        // Nascondi la sfumatura scroll quando si Ã¨ scrollato fino in fondo
+        const scrollWrap = document.querySelector('.filters-scroll');
+        const fadeHint = document.querySelector('.scroll-fade-hint');
+        if (scrollWrap && fadeHint) {
+            scrollWrap.addEventListener('scroll', () => {
+                const atEnd = scrollWrap.scrollLeft + scrollWrap.clientWidth >= scrollWrap.scrollWidth - 10;
+                fadeHint.style.opacity = atEnd ? '0' : '1';
+            });
+        }
+
+        // Overlay e tasto X chiudono il bottom sheet
+        const sheetOverlay = document.getElementById('sheetOverlay');
+        if (sheetOverlay) {
+            sheetOverlay.addEventListener('click', () => {
+                this.closeSheet();
+            });
+        }
+        const btnCloseSheet = document.getElementById('btnCloseSheet');
+        if (btnCloseSheet) {
+            btnCloseSheet.addEventListener('click', () => {
+                this.closeSheet();
+            });
+        }
+
+        // Gestione allegato foto
+        const btnPhoto = document.getElementById('btnTriggerPhoto');
+        const inputPhoto = document.getElementById('inputPhoto');
+        const previewWrap = document.getElementById('photoPreviewWrap');
+        const imgPreview = document.getElementById('imgPreviewUpload');
+        const btnRemovePhoto = document.getElementById('btnRemovePhoto');
+
+        if (btnPhoto && inputPhoto) {
+            btnPhoto.addEventListener('click', () => inputPhoto.click());
+
+            inputPhoto.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    this.selectedPhotoFile = file;
+                    const reader = new FileReader();
+                    reader.onload = (re) => {
+                        imgPreview.src = re.target.result;
+                        previewWrap.classList.remove('hidden');
+                        btnPhoto.classList.add('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                }
+                this.updateSubmitButtonState();
+            });
+
+            btnRemovePhoto.addEventListener('click', () => {
+                this.selectedPhotoFile = null;
+                inputPhoto.value = '';
+                previewWrap.classList.add('hidden');
+                btnPhoto.classList.remove('hidden');
+                this.updateSubmitButtonState();
+            });
+        }
+
+        // Gestione Segmented Control (Aperto / Chiuso)
+        document.querySelectorAll('.segment-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const val = btn.dataset.val;
+                const isSelected = btn.classList.contains('selected');
+
+                document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('selected'));
+
+                if (!isSelected) {
+                    btn.classList.add('selected');
+                    this.currentReportState.stato = val;
+                } else {
+                    this.currentReportState.stato = null;
+                }
+                this.updateSubmitButtonState();
+            });
+        });
+
+        // Gestione Tag Chips (Pompe a secco & Coda)
+        document.querySelectorAll('.tag-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const group = chip.dataset.group;
+                const val = chip.dataset.val;
+                const isSelected = chip.classList.contains('selected');
+
+                if (group === 'pompa') {
+                    chip.classList.toggle('selected', !isSelected);
+                    if (val === 'benzina') this.currentReportState.benzina_esaurita = !isSelected;
+                    if (val === 'diesel') this.currentReportState.diesel_esaurito = !isSelected;
+                } else if (group === 'coda') {
+                    document.querySelectorAll('.tag-chip[data-group="coda"]').forEach(c => c.classList.remove('selected'));
+                    if (!isSelected) {
+                        chip.classList.add('selected');
+                        this.currentReportState.coda = parseInt(val, 10);
+                    } else {
+                        this.currentReportState.coda = null;
+                    }
+                }
+                this.updateSubmitButtonState();
+            });
+        });
+
+        // Pulsante Invia Segnalazione
+        const btnSubmitReport = document.getElementById('btnSubmitReport');
+        if (btnSubmitReport) {
+            btnSubmitReport.addEventListener('click', () => {
+                this.submitFullReport();
+            });
+        }
+
+        // ============================================
+        // Gestione Ricerca Lungo il Percorso (A âž” B)
+        // ============================================
+        const btnOpenRoute = document.getElementById('btnOpenRoute');
+        const routeModal = document.getElementById('routeModalCard');
+        const btnCloseRoute = document.getElementById('btnCloseRoute');
+        const btnCalcRoute = document.getElementById('btnCalcRoute');
+        const btnClearRoute = document.getElementById('btnClearRoute');
+        const startInput = document.getElementById('routeStartInput');
+        const destInput = document.getElementById('routeDestInput');
+
+        if (btnOpenRoute && routeModal) {
+            btnOpenRoute.addEventListener('click', () => {
+                routeModal.classList.toggle('hidden');
+                if (!routeModal.classList.contains('hidden')) {
+                    if (FuelMap.userLat && FuelMap.userLon && (!startInput.value || startInput.value.includes('posizione'))) {
+                        startInput.value = 'La mia posizione attuale';
+                    }
+                    destInput.focus();
+                }
+            });
+
+            if (btnCloseRoute) {
+                btnCloseRoute.addEventListener('click', () => routeModal.classList.add('hidden'));
+            }
+
+            if (btnClearRoute) {
+                btnClearRoute.addEventListener('click', () => {
+                    this.isRouteModeActive = false;
+                    this.currentRouteStart = null;
+                    this.currentRouteDest = null;
+                    FuelMap.clearRoute();
+                    btnClearRoute.classList.add('hidden');
+                    destInput.value = '';
+                    this.closeSheet();
+                    this.loadDistributori(this.currentLat, this.currentLon);
+                    this.showToast('Tracciato percorso rimosso');
+                });
+            }
+
+            // Slider Autonomia Residua (Pit-Stop Planner)
+            const sliderAutonomia = document.getElementById('inputAutonomia');
+            const lblAutonomia = document.getElementById('lblAutonomiaVal');
+            if (sliderAutonomia && lblAutonomia) {
+                sliderAutonomia.addEventListener('input', (e) => {
+                    lblAutonomia.textContent = `${e.target.value} km`;
+                });
+            }
+
+            if (btnCalcRoute) {
+                btnCalcRoute.addEventListener('click', () => this.calculateRouteAndFindFuel());
+            }
+        }
+    },
+
+    async calculateRouteAndFindFuel() {
+        const startInput = document.getElementById('routeStartInput');
+        const destInput = document.getElementById('routeDestInput');
+        const carbSelect = document.getElementById('routeCarbSelect');
+        const typeSelect = document.getElementById('routeTypeSelect');
+        const routeModal = document.getElementById('routeModalCard');
+        const btnCalc = document.getElementById('btnCalcRoute');
+        const btnClear = document.getElementById('btnClearRoute');
+
+        const startVal = startInput.value.trim();
+        const destVal = destInput.value.trim();
+        const carburante = carbSelect.value;
+        const preferenza = typeSelect ? typeSelect.value : 'tutte';
+
+        if (!destVal) {
+            this.showToast('âš ï¸ Inserisci una destinazione (es. Firenze)');
+            destInput.focus();
+            return;
+        }
+
+        btnCalc.disabled = true;
+        btnCalc.innerHTML = '<span>â³ Calcolo rotta e prezzi...</span>';
+
+        try {
+            // 1. Coordinate di partenza
+            let startCoord = null;
+            if (startVal.toLowerCase().includes('posizione') && FuelMap.userLat && FuelMap.userLon) {
+                startCoord = { lat: FuelMap.userLat, lon: FuelMap.userLon, nome: 'La mia posizione' };
+            } else if (startVal) {
+                startCoord = await API.geocode(startVal);
+            } else if (FuelMap.userLat && FuelMap.userLon) {
+                startCoord = { lat: FuelMap.userLat, lon: FuelMap.userLon, nome: 'La mia posizione' };
+            } else {
+                startCoord = { lat: this.currentLat, lon: this.currentLon, nome: 'Roma' };
+            }
+
+            // 2. Coordinate di arrivo
+            const destCoord = await API.geocode(destVal);
+
+            // 3. Calcola tracciato stradale OSRM
+            const route = await API.getOsrmRoute(startCoord.lon, startCoord.lat, destCoord.lon, destCoord.lat);
+
+            // 4. Disegna percorso blu sulla mappa
+            FuelMap.drawRoute(route.geometry);
+
+            // 5. Cerca distributori lungo il buffer del tracciato secondo la preferenza (Autostrada / Risparmio)
+            const fuelRes = await API.getDistributoriSuPercorso(route.geometry, carburante, preferenza);
+            const stations = fuelRes.distributori;
+
+            if (!stations || stations.length === 0) {
+                this.showToast('Nessun distributore aperto trovato direttamente sul tracciato');
+                return;
+            }
+
+            // Attiva la modalitÃ  percorso (garantisce che escano SOLO le pompe del percorso)
+            this.isRouteModeActive = true;
+
+            // Trova la pompa piÃ¹ conveniente lungo tutto il viaggio
+            let minPrice = Infinity;
+            let cheapestStation = null;
+            stations.forEach(d => {
+                const p = parseFloat(d[`prezzo_${carburante}`] || d.prezzo_benzina || d.prezzo_diesel);
+                if (!isNaN(p) && p < minPrice) {
+                    minPrice = p;
+                    cheapestStation = d;
+                }
+            });
+
+            const cheapestId = cheapestStation ? cheapestStation.id : stations[0].id;
+            this.cheapestStationId = cheapestId;
+
+            // 6. Mostra ESCLUSIVAMENTE le pompe sul percorso
+            FuelMap.renderDistributori(stations, cheapestId, carburante);
+
+            const km = (route.distance / 1000).toFixed(0);
+            const mins = (route.duration / 60).toFixed(0);
+            this.showToast(`ðŸš— Percorso (${km} km, ~${mins} min): ${stations.length} pompe sul tragitto!`);
+
+            btnClear.classList.remove('hidden');
+            routeModal.classList.add('hidden');
+
+            // 7. Fa apparire SUBITO la piÃ¹ economica del tragitto per prima
+            const bestToOpen = cheapestStation || stations[0];
+            if (bestToOpen) {
+                setTimeout(() => {
+                    this.openSheet(bestToOpen, true);
+                }, 750);
+            }
+
+        } catch (err) {
+            console.error('Errore percorso:', err);
+            this.showToast(`âŒ ${err.message || 'Errore durante la ricerca'}`);
+        } finally {
+            btnCalc.disabled = false;
+            btnCalc.innerHTML = '<span>ðŸ” Trova Pompe sul Percorso</span>';
+        }
+    },
+
+    // --- Geolocalizzazione ---
+    locateUser() {
+        this.updatePill('Localizzazione in corso...', true);
+        if (!navigator.geolocation) {
+            this.updatePill('Geolocalizzazione non supportata');
+            this.loadDefault();
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const { latitude, longitude } = pos.coords;
+                this.currentLat = latitude;
+                this.currentLon = longitude;
+                
+                FuelMap.setUserPosition(latitude, longitude);
+                FuelMap.flyTo(latitude, longitude, 14);
+                this.loadDistributori(latitude, longitude);
+            },
+            (err) => {
+                console.warn('Errore GPS:', err.message);
+                this.updatePill('GPS non disponibile â€“ mostro Roma');
+                this.loadDefault();
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    },
+
+    loadDefault() {
+        this.currentLat = 41.9028;
+        this.currentLon = 12.4964;
+        this.loadDistributori(this.currentLat, this.currentLon);
+    },
+
+    // Chiamato automaticamente da Leaflet quando sposti la mappa
+    onMapMoved() {
+        // Se stiamo visualizzando le pompe di un percorso stradale, non sovrascriverle!
+        if (this.isRouteModeActive) return;
+
+        const { lat, lon, radius, zoom } = FuelMap.getCenterAndRadius();
+        this.currentLat = lat;
+        this.currentLon = lon;
+
+        // Mostra il pulsante "Cerca in quest'area"
+        const searchAreaBtn = document.getElementById('btnSearchArea');
+        if (searchAreaBtn) searchAreaBtn.classList.remove('hidden');
+
+        // Se lo zoom Ã¨ troppo distante (vista tutta Italia), non auto-caricare
+        if (zoom < 9) {
+            this.updatePill('ðŸ” Ingrandisci la mappa per vedere i distributori', false);
+            return;
+        }
+
+        clearTimeout(this.moveDebounceTimer);
+        this.moveDebounceTimer = setTimeout(() => {
+            this.loadDistributori(lat, lon, Math.max(radius, 8000));
+            if (searchAreaBtn) searchAreaBtn.classList.add('hidden');
+        }, 500);
+    },
+
+    // --- Carica distributori ---
+    async loadDistributori(lat, lon, raggio = 10000) {
+        try {
+            const data = await API.getDistributoriVicini(lat, lon, raggio, this.activeFilters);
+            const stations = data.distributori;
+
+            // Calcolo distributore piÃ¹ conveniente (minimo prezzo benzina/diesel)
+            let minPrice = Infinity;
+            let cheapestId = null;
+            let totalPrice = 0;
+            let countPrice = 0;
+
+            stations.forEach(d => {
+                const p = parseFloat(d.prezzo_benzina || d.prezzo_diesel);
+                if (!isNaN(p) && p > 1) {
+                    totalPrice += p;
+                    countPrice++;
+                    if (p < minPrice) {
+                        minPrice = p;
+                        cheapestId = d.id;
+                    }
+                }
+            });
+
+            this.cheapestStationId = cheapestId;
+            this.currentAveragePrice = countPrice > 0 ? (totalPrice / countPrice) : null;
+
+            // Se Ã¨ attivo il filtro "ðŸ‘‘ Economico", isola solo le stazioni top per convenienza
+            let displayStations = stations;
+            if (this.activeFilters.soloEconomico && this.currentAveragePrice) {
+                displayStations = stations
+                    .filter(d => {
+                        const p = parseFloat(d.prezzo_benzina || d.prezzo_diesel);
+                        return !isNaN(p) && p <= this.currentAveragePrice;
+                    })
+                    .sort((a, b) => {
+                        const pa = parseFloat(a.prezzo_benzina || a.prezzo_diesel) || 999;
+                        const pb = parseFloat(b.prezzo_benzina || b.prezzo_diesel) || 999;
+                        return pa - pb;
+                    });
+            }
+
+            // Renderizza con la corona d'oro al piÃ¹ economico e il prezzo corrispondente al filtro
+            FuelMap.renderDistributori(displayStations, cheapestId, this.activeFilters.carburante);
+
+            const n = stations.length;
+            this.updatePill(`${n} distribut${n === 1 ? 'ore' : 'ori'} nell'area visibile`, false);
+            
+            setTimeout(() => {
+                const statusPill = document.getElementById('statusPill');
+                if (statusPill) statusPill.classList.add('hidden');
+            }, 3000);
+
+        } catch (err) {
+            console.error('Errore caricamento:', err);
+            this.updatePill('Errore nel caricamento');
+        }
+    },
+
+    // --- Bottom Sheet ---
+    openSheet(d, isCheapest = false) {
+        this.currentDistributore = d;
+        const sheet = document.getElementById('bottomSheet');
+        const overlay = document.getElementById('sheetOverlay');
+
+        // Brand e Nome
+        const bandiera = d.bandiera || 'Indipendente';
+        const autostradaBadge = d.autostradale ? ' â€¢ ðŸ›£ï¸ In Autostrada' : '';
+        document.getElementById('sheetBrandTag').textContent = `â›½ ${bandiera}${autostradaBadge}`;
+        document.getElementById('sheetNome').textContent = d.nome || bandiera;
+        document.getElementById('sheetIndirizzo').textContent = d.indirizzo ? `${d.indirizzo}, ${d.comune || ''}` : (d.comune || '');
+
+        // Badge Miglior Prezzo (Corona)
+        const cheapestBadge = document.getElementById('sheetCheapestBadge');
+        if (isCheapest || d.id === this.cheapestStationId) {
+            cheapestBadge.textContent = this.isRouteModeActive ? 'ðŸ‘‘ PiÃ¹ Economica del Viaggio' : 'ðŸ‘‘ Miglior Prezzo';
+            cheapestBadge.classList.remove('hidden');
+        } else {
+            cheapestBadge.classList.add('hidden');
+        }
+
+        // Calcolo distanza reale dalla posizione GPS dell'utente
+        let distanzaText = 'ðŸ“ Attiva il GPS per calcolare la distanza';
+        if (FuelMap.userLat && FuelMap.userLon) {
+            const userPos = L.latLng(FuelMap.userLat, FuelMap.userLon);
+            const stationPos = L.latLng(d.lat, d.lon);
+            const distMeters = userPos.distanceTo(stationPos);
+            
+            if (distMeters < 1000) {
+                distanzaText = `ðŸ“ ${Math.round(distMeters)} m da te`;
+            } else {
+                distanzaText = `ðŸ“ ${(distMeters / 1000).toFixed(1)} km da te`;
+            }
+        }
+        if (d.dist_tracciato_m !== undefined && this.isRouteModeActive) {
+            distanzaText += ` â€¢ ðŸ›£ï¸ A ${d.dist_tracciato_m}m dalla rotta`;
+        }
+        document.getElementById('sheetDistanza').textContent = distanzaText;
+
+        const conferme = d.conferme || 0;
+        document.getElementById('sheetConferme').textContent = `${conferme} feedback`;
+
+        // Link navigatore turn-by-turn
+        const navBtn = document.getElementById('btnNavigate');
+        navBtn.href = `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lon}`;
+
+        // Badge stato
+        const badge = document.getElementById('sheetBadge');
+        const stato = d.stato || 'sconosciuto';
+        badge.textContent = stato;
+        badge.className = `sheet-badge ${stato}`;
+
+        // Griglia carburanti fintech con Trend
+        this.renderFuelGrid(d);
+
+        // Rendering Grafico Andamento Settimanale
+        this.renderWeeklyChart(d);
+
+        // Calcola e aggiorna il risparmio sul pieno
+        this.updateSavingsBadge();
+
+        // Indicatore coda a barre
+        this.renderQueue(d.livello_coda || 0);
+
+        // Visualizzazione Foto (Utente se c'Ã¨, altrimenti Brand)
+        const photoSection = document.getElementById('photoSection');
+        const imgPhoto = document.getElementById('imgStationPhoto');
+        const badgePhoto = document.querySelector('.photo-badge');
+
+        if (d.ultima_foto) {
+            imgPhoto.src = d.ultima_foto;
+            badgePhoto.textContent = 'ðŸ“¸ Foto verificata community';
+            badgePhoto.style.background = 'rgba(5, 150, 105, 0.85)';
+        } else {
+            imgPhoto.src = getBrandPhoto(d.bandiera);
+            badgePhoto.textContent = `ðŸ¢ Stazione ${bandiera}`;
+            badgePhoto.style.background = 'rgba(0, 0, 0, 0.7)';
+        }
+        photoSection.classList.remove('hidden');
+
+        // Link Google Street View 360
+        const streetViewBtn = document.getElementById('btnStreetView');
+        if (streetViewBtn) {
+            streetViewBtn.href = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${d.lat},${d.lon}`;
+        }
+
+        // Reset modulo segnalazione
+        this.resetReportForm();
+
+        // Ultimo aggiornamento
+        const agg = d.ultimo_aggiornamento 
+            ? this.timeAgo(new Date(d.ultimo_aggiornamento)) 
+            : 'Mai aggiornato';
+        document.getElementById('sheetAggiornamento').textContent = `Ultimo aggiornamento: ${agg}`;
+
+        sheet.classList.add('open');
+        overlay.classList.add('active');
+    },
+
+    closeSheet() {
+        document.getElementById('bottomSheet').classList.remove('open');
+        document.getElementById('sheetOverlay').classList.remove('active');
+        this.currentDistributore = null;
+    },
+
+    renderFuelGrid(d) {
+        const grid = document.getElementById('fuelGrid');
+        const fuels = [
+            { id: 'benzina', nome: 'Benzina', dot: 'dot-benzina', dispo: d.benzina_disponibile, prezzo: d.prezzo_benzina },
+            { id: 'diesel',  nome: 'Diesel',  dot: 'dot-diesel',  dispo: d.diesel_disponibile,  prezzo: d.prezzo_diesel },
+            { id: 'gpl',     nome: 'GPL',     dot: 'dot-gpl',     dispo: d.gpl_disponibile,     prezzo: d.prezzo_gpl },
+            { id: 'metano',  nome: 'Metano',  dot: 'dot-metano',  dispo: d.metano_disponibile,  prezzo: d.prezzo_metano },
+        ];
+
+        grid.innerHTML = fuels.map(f => {
+            if (f.dispo === null || f.dispo === undefined) return '';
+
+            const dispoClass = f.dispo ? 'avail-ok' : 'avail-no';
+            const dispoText = f.dispo ? (f.prezzo ? 'Disponibile' : 'Non comunicato') : 'Esaurito';
+            
+            let trendBadge = '';
+            if (f.prezzo && this.currentAveragePrice) {
+                const diff = parseFloat(f.prezzo) - this.currentAveragePrice;
+                if (diff <= -0.015) {
+                    trendBadge = `<span class="trend-pill trend-down">ðŸ“‰ Ottimo</span>`;
+                } else if (diff >= 0.02) {
+                    trendBadge = `<span class="trend-pill trend-up">ðŸ“ˆ Caro</span>`;
+                }
+            }
+
+            const prezzoFormatted = f.prezzo 
+                ? `â‚¬ ${parseFloat(f.prezzo).toFixed(3)}<small>/L</small>${trendBadge}` 
+                : (f.dispo ? '<span class="price-unreported">Non comunicato</span>' : '<span class="price-out">A secco</span>');
+
+            return `
+                <div class="fuel-card-modern ${!f.prezzo ? 'fuel-no-price' : ''}">
+                    <div class="fuel-card-top">
+                        <div class="fuel-name-row">
+                            <span class="fuel-indicator-dot ${f.dot}"></span>
+                            <span>${f.nome}</span>
+                        </div>
+                        <span class="fuel-avail-badge ${dispoClass}">${dispoText}</span>
+                    </div>
+                    <div class="fuel-price-large">${prezzoFormatted}</div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    // Auto-adattamento Light/Dark Mode (Sensore di sistema o Orario 19:30-07:00)
+    initAutoTheme(btnTheme) {
+        const saved = localStorage.getItem('fuelmap_theme');
+        let shouldBeDark = false;
+
+        if (saved) {
+            shouldBeDark = saved === 'dark';
+        } else {
+            // Rileva sensore tema scuro telefono/sistema
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            // Rileva orario notturno (tra le 19:30 e le 07:00)
+            const now = new Date();
+            const hour = now.getHours() + (now.getMinutes() / 60);
+            const isNightTime = hour >= 19.5 || hour < 7.0;
+
+            shouldBeDark = prefersDark || isNightTime;
+        }
+
+        if (shouldBeDark) {
+            document.body.classList.add('dark-theme');
+            btnTheme.classList.add('active');
+            FuelMap.isDarkMode = true;
+            FuelMap.updateBaseLayer();
+        }
+
+        // Ascolta variazioni del tema del telefono in tempo reale
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+                if (!localStorage.getItem('fuelmap_theme')) {
+                    const isDark = e.matches;
+                    document.body.classList.toggle('dark-theme', isDark);
+                    btnTheme.classList.toggle('active', isDark);
+                    if (FuelMap.isDarkMode !== isDark) {
+                        FuelMap.isDarkMode = isDark;
+                        FuelMap.updateBaseLayer();
+                    }
+                }
+            });
+        }
+    },
+
+    // Generatore Grafico SVG Andamento Prezzi Reali dal Database (storico_prezzi)
+    async renderWeeklyChart(d) {
+        const container = document.getElementById('chartSvgWrap');
+        const summary = document.getElementById('chartTrendSummary');
+        const daysRow = document.querySelector('.weekly-days-row');
+        const currentPrice = parseFloat(d.prezzo_benzina || d.prezzo_diesel);
+
+        if (isNaN(currentPrice) || currentPrice <= 0) {
+            document.getElementById('chartSection').classList.add('hidden');
+            return;
+        }
+        document.getElementById('chartSection').classList.remove('hidden');
+
+        try {
+            const data = await API.getStoricoDistributore(d.id);
+            let prices = [];
+            let days = [];
+
+            if (data.storico && data.storico.length >= 2) {
+                // Estrai i prezzi storici reali
+                prices = data.storico.map(r => parseFloat(r.prezzo_benzina || r.prezzo_diesel || currentPrice));
+                days = data.storico.map(r => {
+                    const dt = new Date(r.data);
+                    return dt.toLocaleDateString('it-IT', { weekday: 'short' }).replace('.', '');
+                });
+            } else {
+                prices = [currentPrice, currentPrice];
+                days = ['Ieri', 'Oggi'];
+            }
+
+            // Aggiorna le etichette dei giorni
+            if (daysRow && days.length > 0) {
+                daysRow.innerHTML = days.map(day => `<span>${day}</span>`).join('');
+            }
+
+            const min = Math.min(...prices) - 0.003;
+            const max = Math.max(...prices) + 0.003;
+            const range = max - min || 1;
+            
+            const w = 320;
+            const h = 60;
+            
+            const points = prices.map((p, i) => {
+                const x = (i / (prices.length - 1)) * (w - 20) + 10;
+                const y = h - ((p - min) / range) * (h - 20) - 10;
+                return `${x},${y}`;
+            });
+
+            const polylinePoints = points.join(' ');
+            const diff = prices[prices.length - 1] - prices[0];
+            const isDecreasing = diff <= 0;
+            const strokeColor = isDecreasing ? '#10B981' : '#EF4444';
+            const fillColor = isDecreasing ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)';
+
+            if (Math.abs(diff) < 0.002) {
+                summary.textContent = 'âž¡ï¸ Stabile questa settimana';
+                summary.style.color = '#6B7280';
+            } else {
+                summary.textContent = isDecreasing 
+                    ? `ðŸ“‰ In discesa (${(diff * 100).toFixed(1)} cent)` 
+                    : `ðŸ“ˆ In rialzo (+${(diff * 100).toFixed(1)} cent)`;
+                summary.style.color = strokeColor;
+            }
+
+            const svgHtml = `
+                <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%; height:100%;">
+                    <polygon points="10,${h} ${polylinePoints} ${w - 10},${h}" fill="${fillColor}" />
+                    <polyline points="${polylinePoints}" fill="none" stroke="${strokeColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                    ${points.map((pt, idx) => {
+                        const [cx, cy] = pt.split(',');
+                        const val = prices[idx].toFixed(3);
+                        return `
+                            <g class="chart-point-group">
+                                <circle cx="${cx}" cy="${cy}" r="3.5" fill="#FFFFFF" stroke="${strokeColor}" stroke-width="2" />
+                            </g>
+                        `;
+                    }).join('')}
+                </svg>
+            `;
+            container.innerHTML = svgHtml;
+
+        } catch (err) {
+            console.warn('Errore recupero storico prezzi:', err);
+        }
+    },
+
+    updateSavingsBadge() {
+        if (!this.currentDistributore || !this.currentAveragePrice) {
+            document.getElementById('savingsSection').classList.add('hidden');
+            return;
+        }
+
+        const d = this.currentDistributore;
+        const price = parseFloat(d.prezzo_benzina || d.prezzo_diesel);
+        
+        if (isNaN(price) || price <= 0) {
+            document.getElementById('savingsSection').classList.add('hidden');
+            return;
+        }
+        document.getElementById('savingsSection').classList.remove('hidden');
+
+        const diffPerLiter = this.currentAveragePrice - price;
+        const totalSaved = diffPerLiter * this.selectedTankLiters;
+
+        const badgeEl = document.getElementById('savingsAmountBadge');
+        if (totalSaved > 0.3) {
+            badgeEl.textContent = `Risparmi ~ â‚¬${totalSaved.toFixed(2)}`;
+            badgeEl.style.color = '#047857';
+            badgeEl.style.background = '#ECFDF5';
+        } else if (totalSaved < -0.3) {
+            badgeEl.textContent = `+ â‚¬${Math.abs(totalSaved).toFixed(2)} vs media`;
+            badgeEl.style.color = '#B91C1C';
+            badgeEl.style.background = '#FEF2F2';
+        } else {
+            badgeEl.textContent = 'In linea con la media';
+            badgeEl.style.color = '#4B5563';
+            badgeEl.style.background = '#F3F4F6';
+        }
+    },
+
+    // Condivisione Rapida (Web Share API / WhatsApp / Appunti)
+    async shareCurrentStation() {
+        if (!this.currentDistributore) return;
+        
+        const d = this.currentDistributore;
+        const bandiera = d.bandiera || 'Distributore';
+        const prezzoBenzina = d.prezzo_benzina ? `Benzina: â‚¬ ${parseFloat(d.prezzo_benzina).toFixed(3)}` : '';
+        const prezzoDiesel = d.prezzo_diesel ? `Diesel: â‚¬ ${parseFloat(d.prezzo_diesel).toFixed(3)}` : '';
+        const infoPrezzi = [prezzoBenzina, prezzoDiesel].filter(Boolean).join(' | ');
+
+        const shareData = {
+            title: `Prezzi Carburante ${bandiera}`,
+            text: `â›½ ${bandiera} (${d.nome})\nðŸ“ ${d.indirizzo || d.comune}\nðŸ’° ${infoPrezzi || 'Prezzi aggiornati'}\nGuarda la mappa e naviga qui:`,
+            url: `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lon}`
+        };
+
+        if (navigator.share) {
+            try {
+                await navigator.share(shareData);
+            } catch (err) {
+                // Utente ha annullato condivisione
+            }
+        } else {
+            // Fallback: copia negli appunti
+            const textToCopy = `${shareData.text}\n${shareData.url}`;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                this.showToast('âœ… Dettagli e link copiati negli appunti!');
+            }).catch(() => {
+                this.showToast('âŒ Impossibile copiare il link');
+            });
+        }
+    },
+
+    renderQueue(livello) {
+        const labelEl = document.getElementById('queueStatusText');
+        const bars = document.querySelectorAll('.step-bar');
+        
+        const labels = ['Zero attesa', 'Scorrevole (~5 min)', 'Moderata (~10 min)', 'Lunga (>15 min)'];
+        const colors = ['active-green', 'active-amber', 'active-red'];
+
+        labelEl.textContent = labels[livello] || 'Normale';
+        labelEl.style.color = livello === 0 ? '#059669' : (livello === 1 ? '#D97706' : '#DC2626');
+
+        bars.forEach((bar, idx) => {
+            bar.className = 'step-bar'; 
+            if (idx < livello) {
+                bar.classList.add(colors[Math.min(livello - 1, 2)]);
+            }
+        });
+    },
+
+    updateSubmitButtonState() {
+        const hasSelection = this.currentReportState.stato !== null || 
+            this.currentReportState.benzina_esaurita || 
+            this.currentReportState.diesel_esaurito || 
+            this.currentReportState.coda !== null ||
+            this.selectedPhotoFile !== null;
+
+        const btn = document.getElementById('btnSubmitReport');
+        btn.disabled = !hasSelection;
+        btn.classList.toggle('disabled', !hasSelection);
+    },
+
+    resetReportForm() {
+        this.currentReportState = {
+            stato: null,
+            benzina_esaurita: false,
+            diesel_esaurito: false,
+            coda: null
+        };
+        this.selectedPhotoFile = null;
+
+        document.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('selected'));
+        document.querySelectorAll('.tag-chip').forEach(c => c.classList.remove('selected'));
+        document.getElementById('inputPhoto').value = '';
+        document.getElementById('photoPreviewWrap').classList.add('hidden');
+        document.getElementById('btnTriggerPhoto').classList.remove('hidden');
+        
+        this.updateSubmitButtonState();
+    },
+
+    async submitFullReport() {
+        if (!this.currentDistributore) return;
+
+        const btn = document.getElementById('btnSubmitReport');
+        btn.disabled = true;
+        btn.textContent = 'Invio in corso...';
+
+        try {
+            // Invio stato principale (aperto/chiuso o altro)
+            let tipoSegnalazione = 'stato';
+            let dettagli = {};
+
+            if (this.currentReportState.stato) {
+                tipoSegnalazione = 'stato';
+                dettagli.stato = this.currentReportState.stato;
+            } else if (this.currentReportState.benzina_esaurita) {
+                tipoSegnalazione = 'carburante_esaurito';
+                dettagli.carburante = 'benzina';
+            } else if (this.currentReportState.diesel_esaurito) {
+                tipoSegnalazione = 'carburante_esaurito';
+                dettagli.carburante = 'diesel';
+            } else if (this.currentReportState.coda !== null) {
+                tipoSegnalazione = 'coda';
+                dettagli.livello = this.currentReportState.coda;
+            }
+
+            // Includiamo tutti i dettagli opzionali nel payload
+            if (this.currentReportState.coda !== null) dettagli.livello = this.currentReportState.coda;
+            if (this.currentReportState.benzina_esaurita) dettagli.benzina_esaurita = true;
+            if (this.currentReportState.diesel_esaurito) dettagli.diesel_esaurito = true;
+
+            const res = await API.inviaSegnalazione({
+                distributore_id: this.currentDistributore.id,
+                tipo_segnalazione: tipoSegnalazione,
+                dettagli,
+                lat_utente: FuelMap.userLat,
+                lon_utente: FuelMap.userLon
+            }, this.selectedPhotoFile);
+
+            // Vibrazione aptica su cellulare se supportata
+            if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+
+            this.showToast('âœ… Segnalazione registrata con successo!');
+            this.resetReportForm();
+            
+            // Ricarica la scheda e la mappa
+            setTimeout(() => {
+                const { lat, lon, radius } = FuelMap.getCenterAndRadius();
+                this.loadDistributori(lat, lon, radius);
+            }, 800);
+
+        } catch (err) {
+            this.showToast(`âŒ ${err.message}`);
+        } finally {
+            btn.textContent = 'Conferma Segnalazione';
+            this.updateSubmitButtonState();
+        }
+    },
+
+    // --- UtilitÃ  ---
+    updatePill(text, showDot = true) {
+        const pill = document.getElementById('statusPill');
+        pill.classList.remove('hidden');
+        pill.querySelector('.pill-text').textContent = text;
+        pill.querySelector('.pill-dot').style.display = showDot ? '' : 'none';
+    },
+
+    showToast(text) {
+        const toast = document.getElementById('toast');
+        toast.textContent = text;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+    },
+
+    timeAgo(date) {
+        const seconds = Math.floor((new Date() - date) / 1000);
+        if (seconds < 60) return 'Ora';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)} min fa`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)} ore fa`;
+        return `${Math.floor(seconds / 86400)} giorni fa`;
+    }
+};
+
+// --- Avvio ed esposizione globale ---
+window.App = App;
+document.addEventListener('DOMContentLoaded', () => App.init());
+
+===== public/js/map.js =====
+// ============================================
+// Mappa Leaflet â€“ gestione marker e interazioni
+// ============================================
+
+const FuelMap = {
+    map: null,
+    markers: [],
+    clusterGroup: null,
+    userMarker: null,
+    userLat: null,
+    userLon: null,
+    
+    streetLayer: null,
+    satelliteLayer: null,
+    satelliteLabelsLayer: null,
+
+    isSatellite: false,
+    isDarkMode: false,
+
+    init() {
+        // Layer Principale Stradale OpenStreetMap (100% stabile, zero blocchi)
+        this.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: 'Â© OpenStreetMap contributors',
+            maxZoom: 19
+        });
+
+        // Layer Satellite Esri World Imagery
+        this.satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Â© Esri',
+            maxZoom: 19
+        });
+
+        // Etichette strade per il satellite
+        this.satelliteLabelsLayer = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19
+        });
+
+        this.map = L.map('map', {
+            zoomControl: false,
+            attributionControl: true,
+            layers: [this.streetLayer]
+        }).setView([41.9028, 12.4964], 13);
+
+        L.control.zoom({ position: 'bottomright' }).addTo(this.map);
+
+        // Inizializzazione Gruppo Cluster ad alte prestazioni
+        if (typeof L.markerClusterGroup === 'function') {
+            this.clusterGroup = L.markerClusterGroup({
+                maxClusterRadius: 40,
+                showCoverageOnHover: false,
+                spiderfyOnMaxZoom: true,
+                animate: true,
+                iconCreateFunction: (cluster) => {
+                    const count = cluster.getChildCount();
+                    let sizeClass = 'cluster-sm';
+                    if (count >= 15) sizeClass = 'cluster-md';
+                    if (count >= 40) sizeClass = 'cluster-lg';
+                    return L.divIcon({
+                        html: `<div class="fuel-cluster-icon ${sizeClass}"><span>${count}</span></div>`,
+                        className: '',
+                        iconSize: [38, 38],
+                        iconAnchor: [19, 19]
+                    });
+                }
+            });
+            this.map.addLayer(this.clusterGroup);
+        }
+
+        this.map.on('moveend', () => {
+            if (window.App && typeof window.App.onMapMoved === 'function') {
+                window.App.onMapMoved();
+            }
+        });
+    },
+
+    getCenterAndRadius() {
+        const center = this.map.getCenter();
+        const bounds = this.map.getBounds();
+        const radiusMeters = center.distanceTo(bounds.getNorthEast());
+        const zoom = this.map.getZoom();
+
+        return {
+            lat: center.lat,
+            lon: center.lng,
+            radius: Math.min(Math.round(radiusMeters), 30000),
+            zoom
+        };
+    },
+
+    createMarkerIcon(d, isCheapest = false, fuelFilter = null) {
+        let price = null;
+        if (fuelFilter && d[`prezzo_${fuelFilter}`]) {
+            price = d[`prezzo_${fuelFilter}`];
+        } else {
+            price = d.prezzo_benzina || d.prezzo_diesel || d.prezzo_gpl || d.prezzo_metano;
+        }
+
+        const priceText = (price && parseFloat(price) > 0) 
+            ? `${parseFloat(price).toFixed(3)} â‚¬` 
+            : 'â›½';
+            
+        const stato = d.stato || 'sconosciuto';
+        const crownHtml = isCheapest ? '<div class="pin-crown">ðŸ‘‘</div>' : '';
+        const highwayTag = d.autostradale ? '<span class="pin-highway-badge" title="Area di Servizio Autostradale">ðŸ›£ï¸</span>' : '';
+
+        const width = d.autostradale ? 80 : 66;
+
+        return L.divIcon({
+            className: 'custom-pin-wrap',
+            html: `
+                <div class="fuel-price-pin ${isCheapest ? 'pin-cheapest' : ''} ${d.autostradale ? 'pin-highway' : ''} pin-status-${stato}">
+                    ${crownHtml}
+                    ${highwayTag}
+                    <span class="pin-status-dot"></span>
+                    <span class="pin-price-val">${priceText}</span>
+                    <div class="pin-tail"></div>
+                </div>
+            `,
+            iconSize: [width, 30],
+            iconAnchor: [width / 2, 30],
+            popupAnchor: [0, -32]
+        });
+    },
+
+    renderDistributori(distributori, cheapestId = null, fuelFilter = null) {
+        if (this.clusterGroup) {
+            this.clusterGroup.clearLayers();
+        } else {
+            this.markers.forEach(m => this.map.removeLayer(m));
+        }
+        this.markers = [];
+        const newMarkers = [];
+
+        distributori.forEach(d => {
+            const isCheapest = d.id === cheapestId;
+            const icon = this.createMarkerIcon(d, isCheapest, fuelFilter);
+            
+            const marker = L.marker([d.lat, d.lon], { icon });
+
+            marker.on('click', () => {
+                App.openSheet(d, isCheapest);
+            });
+
+            marker.distributoreData = d;
+            newMarkers.push(marker);
+            this.markers.push(marker);
+        });
+
+        if (this.clusterGroup) {
+            this.clusterGroup.addLayers(newMarkers);
+        } else {
+            newMarkers.forEach(m => m.addTo(this.map));
+        }
+    },
+
+    setUserPosition(lat, lon) {
+        this.userLat = lat;
+        this.userLon = lon;
+
+        if (this.userMarker) {
+            this.map.removeLayer(this.userMarker);
+        }
+
+        this.userMarker = L.circleMarker([lat, lon], {
+            radius: 8,
+            fillColor: '#0066FF',
+            fillOpacity: 1,
+            color: 'white',
+            weight: 3
+        }).addTo(this.map);
+
+        L.circle([lat, lon], {
+            radius: 50,
+            fillColor: '#0066FF',
+            fillOpacity: 0.08,
+            color: '#0066FF',
+            weight: 1,
+            opacity: 0.3
+        }).addTo(this.map);
+    },
+
+    flyTo(lat, lon, zoom = 15) {
+        this.map.flyTo([lat, lon], zoom, { duration: 1 });
+    },
+
+    updateBaseLayer() {
+        const mapEl = document.getElementById('map');
+
+        if (this.isSatellite) {
+            // Rimuovi mappa stradale
+            if (this.map.hasLayer(this.streetLayer)) this.map.removeLayer(this.streetLayer);
+            // Aggiungi satellite + etichette
+            if (!this.map.hasLayer(this.satelliteLayer)) this.map.addLayer(this.satelliteLayer);
+            if (!this.map.hasLayer(this.satelliteLabelsLayer)) this.map.addLayer(this.satelliteLabelsLayer);
+            // Disattiva filtro notturno su satellite
+            if (mapEl) mapEl.classList.remove('map-dark-tiles');
+        } else {
+            // Rimuovi satellite + etichette
+            if (this.map.hasLayer(this.satelliteLayer)) this.map.removeLayer(this.satelliteLayer);
+            if (this.map.hasLayer(this.satelliteLabelsLayer)) this.map.removeLayer(this.satelliteLabelsLayer);
+            // Ripristina mappa stradale
+            if (!this.map.hasLayer(this.streetLayer)) this.map.addLayer(this.streetLayer);
+            // Applica o rimuovi filtro notturno alla mappa stradale
+            if (mapEl) mapEl.classList.toggle('map-dark-tiles', this.isDarkMode);
+        }
+
+        setTimeout(() => this.map.invalidateSize(), 50);
+    },
+
+    toggleSatellite() {
+        this.isSatellite = !this.isSatellite;
+        this.updateBaseLayer();
+        return this.isSatellite;
+    },
+
+    toggleDarkMode(forcedState) {
+        if (typeof forcedState === 'boolean') {
+            this.isDarkMode = forcedState;
+        } else {
+            this.isDarkMode = !this.isDarkMode;
+        }
+        this.updateBaseLayer();
+        return this.isDarkMode;
+    },
+
+    // --- Disegna Tracciato Percorso Stradale ---
+    routeLayer: null,
+
+    drawRoute(geojson) {
+        this.clearRoute();
+
+        this.routeLayer = L.geoJSON(geojson, {
+            style: {
+                color: '#0066FF',
+                weight: 6,
+                opacity: 0.85,
+                lineJoin: 'round',
+                lineCap: 'round'
+            }
+        }).addTo(this.map);
+
+        try {
+            const bounds = this.routeLayer.getBounds();
+            if (bounds.isValid()) {
+                this.map.fitBounds(bounds, { padding: [60, 60] });
+            }
+        } catch (e) {
+            console.warn('Errore calcolo bounds rotta:', e);
+        }
+    },
+
+    clearRoute() {
+        if (this.routeLayer) {
+            this.map.removeLayer(this.routeLayer);
+            this.routeLayer = null;
+        }
+    }
+};
+
+
