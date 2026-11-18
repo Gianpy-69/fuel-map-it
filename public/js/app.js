@@ -1113,8 +1113,9 @@ const App = {
                 // Estrai i prezzi storici reali
                 prices = data.storico.map(r => parseFloat(r.prezzo_benzina || r.prezzo_diesel || currentPrice));
                 days = data.storico.map(r => {
-                    const dt = new Date(r.data);
-                    return dt.toLocaleDateString('it-IT', { weekday: 'short' }).replace('.', '');
+                    const dt = new Date(r.data && !r.data.includes('T') ? r.data + 'T12:00:00' : r.data);
+                    const name = dt.toLocaleDateString('it-IT', { weekday: 'short' }).replace('.', '');
+                    return name.charAt(0).toUpperCase() + name.slice(1);
                 });
             } else {
                 prices = [currentPrice, currentPrice];

@@ -1,7 +1,7 @@
 // ============================================
 // Service Worker — PWA Cache & Offline Shell
 // ============================================
-const CACHE_NAME = 'fuelmap-v17';
+const CACHE_NAME = 'fuelmap-v18';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
