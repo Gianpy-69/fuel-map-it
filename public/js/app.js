@@ -287,24 +287,121 @@ const App = {
             });
         }
 
-        // Input Ricerca con Debounce
+        // Input Ricerca con Autocomplete Suggerimenti (Stile Google Maps)
         const searchInput = document.getElementById('searchInput');
         const btnClear = document.getElementById('btnClearSearch');
-        if (searchInput && btnClear) {
+        const suggestionsWrap = document.getElementById('searchSuggestions');
+
+        if (searchInput && btnClear && suggestionsWrap) {
+            let currentSuggestions = [];
+
+            const hideSuggestions = () => {
+                suggestionsWrap.classList.add('hidden');
+                suggestionsWrap.innerHTML = '';
+            };
+
+            const selectSuggestion = (item) => {
+                hideSuggestions();
+                const fullText = item.title + (item.subtitle ? `, ${item.subtitle}` : '');
+                searchInput.value = fullText;
+                btnClear.classList.remove('hidden');
+
+                this.currentLat = item.lat;
+                this.currentLon = item.lon;
+                this.activeFilters.q = '';
+
+                FuelMap.flyTo(item.lat, item.lon, item.icon === '🏙️' ? 13 : 15);
+                this.loadDistributori(item.lat, item.lon);
+                DynamicIsland.showStatus(`Arrivato a ${item.title}`, '📍', 3000);
+            };
+
             searchInput.addEventListener('input', (e) => {
                 const val = e.target.value.trim();
                 btnClear.classList.toggle('hidden', val.length === 0);
 
                 clearTimeout(this.searchDebounceTimer);
-                this.searchDebounceTimer = setTimeout(() => {
-                    this.activeFilters.q = val;
+
+                if (val.length < 2) {
+                    hideSuggestions();
+                    this.activeFilters.q = '';
                     this.loadDistributori(this.currentLat, this.currentLon);
-                }, 300);
+                    return;
+                }
+
+                // Debounce 250ms per caricare suggerimenti di vie/città
+                this.searchDebounceTimer = setTimeout(async () => {
+                    try {
+                        const suggestions = await API.getSearchSuggestions(val);
+                        currentSuggestions = suggestions;
+
+                        if (!suggestions || suggestions.length === 0) {
+                            hideSuggestions();
+                            this.activeFilters.q = val;
+                            this.loadDistributori(this.currentLat, this.currentLon);
+                            return;
+                        }
+
+                        suggestionsWrap.innerHTML = suggestions.map((item, idx) => `
+                            <div class="suggestion-item" data-index="${idx}">
+                                <span class="suggestion-icon">${item.icon || '📍'}</span>
+                                <div class="suggestion-content">
+                                    <span class="suggestion-title">${this.escapeHtml(item.title)}</span>
+                                    <span class="suggestion-subtitle">${this.escapeHtml(item.subtitle)}</span>
+                                </div>
+                            </div>
+                        `).join('');
+
+                        suggestionsWrap.classList.remove('hidden');
+
+                        suggestionsWrap.querySelectorAll('.suggestion-item').forEach(el => {
+                            el.addEventListener('click', (ev) => {
+                                ev.stopPropagation();
+                                const index = parseInt(el.getAttribute('data-index'), 10);
+                                if (currentSuggestions[index]) {
+                                    selectSuggestion(currentSuggestions[index]);
+                                }
+                            });
+                        });
+                    } catch (err) {
+                        console.warn('Errore recupero suggerimenti:', err);
+                        hideSuggestions();
+                    }
+                }, 250);
+            });
+
+            // Invio su input ricerca (Enter)
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (currentSuggestions.length > 0) {
+                        selectSuggestion(currentSuggestions[0]);
+                    } else if (searchInput.value.trim().length > 0) {
+                        hideSuggestions();
+                        API.geocode(searchInput.value.trim()).then(loc => {
+                            this.currentLat = loc.lat;
+                            this.currentLon = loc.lon;
+                            FuelMap.flyTo(loc.lat, loc.lon, 14);
+                            this.loadDistributori(loc.lat, loc.lon);
+                            DynamicIsland.showStatus(`Arrivato a ${loc.nome}`, '📍', 3000);
+                        }).catch(() => {
+                            this.activeFilters.q = searchInput.value.trim();
+                            this.loadDistributori(this.currentLat, this.currentLon);
+                        });
+                    }
+                }
+            });
+
+            // Chiudi suggerimenti cliccando altrove
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.search-bar')) {
+                    hideSuggestions();
+                }
             });
 
             btnClear.addEventListener('click', () => {
                 searchInput.value = '';
                 btnClear.classList.add('hidden');
+                hideSuggestions();
                 this.activeFilters.q = '';
                 this.loadDistributori(this.currentLat, this.currentLon);
             });
@@ -1735,6 +1832,16 @@ const App = {
                 }
             });
         });
+    },
+
+    escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     },
 
     // --- Utilità ---

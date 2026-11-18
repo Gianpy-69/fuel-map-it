@@ -72,9 +72,108 @@ body.dark-theme #map {
 }
 
 .search-bar {
+    position: relative;
     display: flex;
-    gap: 8px;
+    flex-direction: column;
     pointer-events: auto;
+}
+
+.search-suggestions {
+    position: absolute;
+    top: 54px;
+    left: 0;
+    right: 0;
+    background: #FFFFFF;
+    border-radius: var(--radius);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    z-index: 1200;
+    max-height: 290px;
+    overflow-y: auto;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    animation: fadeInDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+body.dark-theme .search-suggestions {
+    background: #1E293B;
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 14px 35px rgba(0, 0, 0, 0.7);
+}
+
+.suggestion-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    transition: background 0.15s ease;
+    user-select: none;
+}
+
+body.dark-theme .suggestion-item {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.suggestion-item:hover,
+.suggestion-item:active {
+    background: #F1F5F9;
+}
+
+body.dark-theme .suggestion-item:hover,
+body.dark-theme .suggestion-item:active {
+    background: #334155;
+}
+
+.suggestion-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+    width: 26px;
+    text-align: center;
+}
+
+.suggestion-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.suggestion-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.dark-theme .suggestion-title {
+    color: #F8FAFC;
+}
+
+.suggestion-subtitle {
+    font-size: 12px;
+    color: var(--text-sec);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
 }
 
 .search-inner {

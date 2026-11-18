@@ -128,6 +128,70 @@ const API = {
         return response.json();
     },
 
+    async getSearchSuggestions(query) {
+        const q = typeof query === 'string' ? query.trim() : '';
+        if (q.length < 2) return [];
+
+        try {
+            const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&bbox=6.6,35.5,18.5,47.1`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Photon status ${res.status}`);
+            const data = await res.json();
+
+            if (!data || !Array.isArray(data.features)) return [];
+
+            return data.features.map(f => {
+                const p = f.properties || {};
+                const coords = f.geometry?.coordinates || [];
+                const subtitleParts = [p.street, p.city, p.state].filter(Boolean);
+                const title = p.name || p.street || p.city || 'Luogo';
+                const subtitle = subtitleParts.filter(s => s.toLowerCase() !== title.toLowerCase()).join(', ') || 'Italia';
+
+                let icon = '📍';
+                if (p.type === 'city') icon = '🏙️';
+                else if (p.type === 'street') icon = '🛣️';
+
+                return {
+                    title,
+                    subtitle,
+                    icon,
+                    lat: coords[1],
+                    lon: coords[0]
+                };
+            }).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lon));
+        } catch (err) {
+            try {
+                const fallbackUrl = 'https://nominatim.openstreetmap.org/search?' +
+                    new URLSearchParams({
+                        format: 'jsonv2',
+                        q: `${q}, Italia`,
+                        limit: '5',
+                        countrycodes: 'it',
+                        addressdetails: '1'
+                    }).toString();
+
+                const resFallback = await fetch(fallbackUrl, {
+                    headers: { Accept: 'application/json' }
+                });
+                const dataFallback = await resFallback.json();
+                if (!Array.isArray(dataFallback)) return [];
+
+                return dataFallback.map(item => {
+                    const parts = (item.display_name || '').split(',');
+                    return {
+                        title: parts[0]?.trim() || item.name || 'Luogo',
+                        subtitle: parts.slice(1, 3).map(s => s.trim()).join(', ') || 'Italia',
+                        icon: '📍',
+                        lat: parseFloat(item.lat),
+                        lon: parseFloat(item.lon)
+                    };
+                }).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lon));
+            } catch (fallbackErr) {
+                return [];
+            }
+        }
+    },
+
     async geocode(query) {
         const normalizedQuery =
             typeof query === 'string'
