@@ -1,7 +1,14 @@
 'use strict';
 
+const isNativeApp = typeof window !== 'undefined' && (
+    window.Capacitor !== undefined ||
+    window.location.protocol === 'capacitor:' ||
+    window.location.protocol === 'ionic:' ||
+    window.location.hostname === 'localhost' && window.location.port === ''
+);
+
 const API = {
-    baseUrl: '',
+    baseUrl: isNativeApp ? 'https://fuel-map-it.onrender.com' : '',
 
     async getDistributoriVicini(
         lat,

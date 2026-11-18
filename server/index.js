@@ -14,7 +14,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware globali
-app.use(cors());
+app.use(cors({
+    origin: [
+        /^https?:\/\/localhost(:\d+)?$/,
+        /^https?:\/\/fuel-map-it\.onrender\.com$/,
+        'capacitor://localhost',
+        'ionic://localhost'
+    ],
+    credentials: true
+}));
 app.use(express.json());
 
 // File statici (frontend)
