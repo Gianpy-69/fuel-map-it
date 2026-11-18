@@ -43,10 +43,15 @@ self.addEventListener('activate', (event) => {
 
 // Fetch: Network-first per API, Cache-first per asset statici
 self.addEventListener('fetch', (event) => {
+    // Il Cache Storage supporta solo richieste GET: ignora POST, PUT, DELETE
+    if (event.request.method !== 'GET') {
+        return;
+    }
+
     const url = new URL(event.request.url);
 
-    // Le chiamate API vanno sempre via rete (dati in tempo reale)
-    if (url.pathname.startsWith('/api/')) {
+    // Le chiamate API e backend cloud vanno sempre via rete (dati in tempo reale)
+    if (url.pathname.startsWith('/api/') || url.hostname.includes('onrender.com') || url.hostname.includes('supabase.co')) {
         event.respondWith(
             fetch(event.request).catch(() => {
                 return new Response(JSON.stringify({ errore: 'Offline - impossibile caricare dati' }), {
@@ -60,11 +65,12 @@ self.addEventListener('fetch', (event) => {
     // Asset statici: Network first con fallback su cache
     event.respondWith(
         fetch(event.request).then((networkResponse) => {
-            // Aggiorna la cache con la versione fresca
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, clone);
-            });
+            if (networkResponse && networkResponse.status === 200 && event.request.method === 'GET') {
+                const clone = networkResponse.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                    cache.put(event.request, clone);
+                });
+            }
             return networkResponse;
         }).catch(() => {
             // Offline: usa la cache

@@ -167,8 +167,8 @@ const App = {
         this.loadFavorites();
         this.updateFavoritesBadge();
 
-        // Registrazione Service Worker per PWA
-        if ('serviceWorker' in navigator) {
+        // Registrazione Service Worker per PWA (solo browser web, non su app nativa)
+        if ('serviceWorker' in navigator && !window.Capacitor) {
             navigator.serviceWorker.register('/sw.js').catch((err) => {
                 console.warn('Service Worker non registrato:', err);
             });
@@ -764,7 +764,7 @@ const App = {
                 this.updatePill('GPS non disponibile – mostro Roma');
                 this.loadDefault();
             },
-            { enableHighAccuracy: true, timeout: 10000 }
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
         );
     },
 
@@ -804,7 +804,7 @@ const App = {
     async loadDistributori(lat, lon, raggio = 10000) {
         try {
             const data = await API.getDistributoriVicini(lat, lon, raggio, this.activeFilters);
-            const stations = data.distributori;
+            const stations = Array.isArray(data?.distributori) ? data.distributori : [];
 
             // Calcolo distributore più conveniente (minimo prezzo benzina/diesel)
             let minPrice = Infinity;
