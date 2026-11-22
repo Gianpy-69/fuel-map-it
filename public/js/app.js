@@ -167,6 +167,12 @@ const App = {
         this.loadFavorites();
         this.updateFavoritesBadge();
 
+        // Caricamento preferenza carburante predefinito
+        const savedFuel = localStorage.getItem('fuelmap_default_fuel');
+        if (savedFuel && savedFuel !== 'tutti') {
+            this.activeFilters.carburante = savedFuel;
+        }
+
         // Registrazione Service Worker per PWA (solo browser web, non su app nativa)
         if ('serviceWorker' in navigator && !window.Capacitor) {
             navigator.serviceWorker.register('/sw.js').catch((err) => {
@@ -231,6 +237,69 @@ const App = {
                     const isDark = FuelMap.toggleDarkMode();
                     document.body.classList.toggle('dark-theme', isDark);
                     localStorage.setItem('fuelmap_theme', isDark ? 'dark' : 'light');
+                });
+            }
+
+            // Carburante Predefinito all'Avvio (Impostazioni)
+            const selDefFuel = document.getElementById('selectDefaultFuel');
+            if (selDefFuel) {
+                const savedDefFuel = localStorage.getItem('fuelmap_default_fuel') || 'tutti';
+                selDefFuel.value = savedDefFuel;
+                selDefFuel.addEventListener('change', (e) => {
+                    const fuel = e.target.value;
+                    localStorage.setItem('fuelmap_default_fuel', fuel);
+                    this.applyFuelFilter(fuel);
+                    DynamicIsland.showStatus(`Predefinito: ${fuel.toUpperCase()}`, '⛽', 2500);
+                });
+            }
+
+            // Tasto Invia Feedback nel Pannello Strumenti
+            const btnToolFeedback = document.getElementById('btnToolFeedback');
+            const feedbackModal = document.getElementById('feedbackModalCard');
+            const btnCloseFeedback = document.getElementById('btnCloseFeedback');
+            const btnSubmitFeedback = document.getElementById('btnSubmitFeedback');
+            const txtFeedbackMsg = document.getElementById('txtFeedbackMsg');
+            const txtFeedbackEmail = document.getElementById('txtFeedbackEmail');
+
+            if (btnToolFeedback && feedbackModal) {
+                btnToolFeedback.addEventListener('click', () => {
+                    toolsModal.classList.add('hidden');
+                    feedbackModal.classList.remove('hidden');
+                    if (txtFeedbackMsg) txtFeedbackMsg.focus();
+                });
+            }
+
+            if (btnCloseFeedback && feedbackModal) {
+                btnCloseFeedback.addEventListener('click', () => {
+                    feedbackModal.classList.add('hidden');
+                });
+            }
+
+            if (btnSubmitFeedback && txtFeedbackMsg) {
+                btnSubmitFeedback.addEventListener('click', async () => {
+                    const msg = txtFeedbackMsg.value.trim();
+                    const email = txtFeedbackEmail ? txtFeedbackEmail.value.trim() : null;
+                    if (msg.length < 3) {
+                        this.showToast('⚠️ Scrivi almeno qualche parola nel messaggio');
+                        return;
+                    }
+
+                    btnSubmitFeedback.disabled = true;
+                    btnSubmitFeedback.textContent = 'Invio in corso...';
+
+                    try {
+                        await API.inviaFeedback(msg, email);
+                        feedbackModal.classList.add('hidden');
+                        txtFeedbackMsg.value = '';
+                        if (txtFeedbackEmail) txtFeedbackEmail.value = '';
+                        DynamicIsland.showStatus('Grazie per il tuo feedback! ❤️', '💬', 3500);
+                        this.showToast('✅ Feedback inviato con successo!');
+                    } catch (err) {
+                        this.showToast(`❌ ${err.message}`);
+                    } finally {
+                        btnSubmitFeedback.disabled = false;
+                        btnSubmitFeedback.innerHTML = '<span>Invia Messaggio</span>';
+                    }
                 });
             }
 

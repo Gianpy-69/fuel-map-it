@@ -209,6 +209,59 @@
                     <span class="toggle-slider"></span>
                 </label>
             </div>
+
+            <!-- Carburante Predefinito all'Avvio -->
+            <div class="tool-item-card" id="toolRowDefaultFuel">
+                <div class="tool-icon-wrap tool-fuel-icon">⛽</div>
+                <div class="tool-text-wrap">
+                    <span class="tool-title">Carburante Predefinito</span>
+                    <span class="tool-sub">Filtro attivo all'avvio</span>
+                </div>
+                <select id="selectDefaultFuel" class="tool-compact-select">
+                    <option value="tutti">✨ Tutti</option>
+                    <option value="benzina">🟢 Benzina</option>
+                    <option value="diesel">⚫ Diesel</option>
+                    <option value="gpl">💧 GPL</option>
+                    <option value="metano">💨 Metano</option>
+                </select>
+            </div>
+
+            <!-- Invia Feedback & Suggerimenti -->
+            <button type="button" class="tool-item-card" id="btnToolFeedback">
+                <div class="tool-icon-wrap tool-feedback-icon">💬</div>
+                <div class="tool-text-wrap">
+                    <span class="tool-title">Invia Feedback</span>
+                    <span class="tool-sub">Segnala un problema o suggerisci idee</span>
+                </div>
+                <span class="tool-arrow">➔</span>
+            </button>
+        </div>
+
+        <div class="tools-footer-info">
+            <a href="/privacy.html" target="_blank" class="link-privacy">Informativa Privacy</a>
+            <span class="app-version-tag">Fuel Map Italia v1.0.0</span>
+        </div>
+    </div>
+
+    <!-- Modal Invia Feedback -->
+    <div class="route-modal-card hidden" id="feedbackModalCard">
+        <div class="route-modal-header">
+            <div class="route-title-wrap">
+                <span class="route-badge-icon">💬</span>
+                <h3>Invia Feedback</h3>
+            </div>
+            <button type="button" class="btn-close-route" id="btnCloseFeedback">✕</button>
+        </div>
+        <div class="feedback-modal-body">
+            <p class="feedback-intro">Il tuo parere ci aiuta a migliorare. Dicci cosa vorresti aggiungere o segnala eventuali incongruenze:</p>
+            <textarea id="txtFeedbackMsg" class="feedback-textarea" placeholder="Scrivi qui il tuo messaggio o suggerimento..." rows="4" maxlength="3000"></textarea>
+            <div class="feedback-input-group">
+                <label for="txtFeedbackEmail">Email di contatto (facoltativa per risposta):</label>
+                <input type="email" id="txtFeedbackEmail" class="feedback-email-input" placeholder="tua@email.com" maxlength="200">
+            </div>
+            <button type="button" class="btn-submit-feedback" id="btnSubmitFeedback">
+                <span>Invia Messaggio</span>
+            </button>
         </div>
     </div>
 

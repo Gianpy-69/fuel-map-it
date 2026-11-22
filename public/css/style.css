@@ -2692,5 +2692,156 @@ body.dark-theme #btnLocate svg {
     }
 }
 
+/* --- Stili Feedback & Impostazioni Tools --- */
+.tool-compact-select {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #CBD5E1;
+    background: #F8FAFC;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+body.dark-theme .tool-compact-select {
+    background: #0F172A;
+    border-color: #334155;
+    color: #F8FAFC;
+}
+
+.tools-footer-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px 8px 16px;
+    border-top: 1px solid #E2E8F0;
+    margin-top: 6px;
+}
+
+body.dark-theme .tools-footer-info {
+    border-top-color: #334155;
+}
+
+.link-privacy {
+    font-size: 12px;
+    color: #10B981;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.link-privacy:hover {
+    text-decoration: underline;
+}
+
+.app-version-tag {
+    font-size: 11px;
+    color: var(--text-sec);
+    font-weight: 500;
+}
+
+/* Modale Feedback */
+.feedback-modal-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.feedback-intro {
+    font-size: 13.5px;
+    color: var(--text-sec);
+    line-height: 1.45;
+}
+
+.feedback-textarea {
+    width: 100%;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 12px;
+    padding: 12px;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text);
+    background: #F8FAFC;
+    resize: none;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.feedback-textarea:focus {
+    border-color: #10B981;
+    background: #FFFFFF;
+}
+
+body.dark-theme .feedback-textarea {
+    background: #0F172A;
+    border-color: #334155;
+    color: #F8FAFC;
+}
+
+body.dark-theme .feedback-textarea:focus {
+    border-color: #10B981;
+    background: #1E293B;
+}
+
+.feedback-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.feedback-input-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-sec);
+}
+
+.feedback-email-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--text);
+    background: #F8FAFC;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.feedback-email-input:focus {
+    border-color: #10B981;
+    background: #FFFFFF;
+}
+
+body.dark-theme .feedback-email-input {
+    background: #0F172A;
+    border-color: #334155;
+    color: #F8FAFC;
+}
+
+.btn-submit-feedback {
+    background: #10B981;
+    color: #000000;
+    border: none;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.btn-submit-feedback:hover {
+    background: #059669;
+}
+
+.btn-submit-feedback:active {
+    transform: scale(0.98);
+}
+
 
 

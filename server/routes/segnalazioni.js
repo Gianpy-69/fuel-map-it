@@ -247,4 +247,29 @@ router.post('/', rateLimiter, upload.single('foto'), async (req, res) => {
     }
 });
 
+// POST /api/segnalazioni/feedback - Ricezione feedback e suggerimenti utenti
+router.post('/feedback', rateLimiter, async (req, res) => {
+    try {
+        const { messaggio, email, app_version } = req.body;
+        if (!messaggio || typeof messaggio !== 'string' || messaggio.trim().length < 3) {
+            return res.status(400).json({ errore: 'Il messaggio deve contenere almeno 3 caratteri' });
+        }
+
+        const sessionId = req.headers['x-session-id'] || req.body.session_id || 'anonymous';
+        const cleanMsg = messaggio.trim().substring(0, 3000);
+        const cleanEmail = email && typeof email === 'string' ? email.trim().substring(0, 200) : null;
+        const version = app_version && typeof app_version === 'string' ? app_version.trim().substring(0, 20) : '1.0.0';
+
+        await pool.query(`
+            INSERT INTO feedback_utenti (messaggio, email, app_version, session_id)
+            VALUES ($1, $2, $3, $4)
+        `, [cleanMsg, cleanEmail, version, sessionId]);
+
+        return res.status(201).json({ status: 'ok', messaggio: 'Feedback ricevuto con successo! Grazie per il supporto.' });
+    } catch (err) {
+        console.error('Errore invio feedback:', err.message);
+        return res.status(500).json({ errore: 'Impossibile inviare il feedback' });
+    }
+});
+
 module.exports = router;

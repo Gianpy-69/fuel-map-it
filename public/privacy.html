@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Informativa sulla Privacy — Fuel Map Italia</title>
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <style>
+        :root {
+            --primary: #10B981;
+            --primary-dark: #059669;
+            --bg: #F8FAFC;
+            --surface: #FFFFFF;
+            --text: #0F172A;
+            --text-sec: #64748B;
+            --border: #E2E8F0;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0F172A;
+                --surface: #1E293B;
+                --text: #F8FAFC;
+                --text-sec: #94A3B8;
+                --border: #334155;
+            }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 24px 16px;
+        }
+        .container {
+            max-width: 720px;
+            margin: 0 auto;
+            background: var(--surface);
+            padding: 32px 24px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+            border: 1px solid var(--border);
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .header img {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+        }
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+        }
+        .badge {
+            display: inline-block;
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--primary);
+            padding: 4px 10px;
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        h2 {
+            font-size: 16px;
+            font-weight: 700;
+            margin: 24px 0 8px 0;
+            color: var(--primary);
+        }
+        p, ul {
+            font-size: 14px;
+            color: var(--text-sec);
+            margin-bottom: 12px;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 6px;
+        }
+        .highlight-box {
+            background: rgba(16, 185, 129, 0.08);
+            border-left: 4px solid var(--primary);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            font-size: 13.5px;
+        }
+        .footer {
+            margin-top: 32px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-sec);
+            text-align: center;
+        }
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Torna a Fuel Map Italia</a>
+        <div class="header">
+            <img src="/icon.svg" alt="Logo Fuel Map">
+            <div>
+                <h1>Informativa sulla Privacy</h1>
+                <p style="margin:0; font-size:12px;">Ultimo aggiornamento: 22 Novembre 2026</p>
+            </div>
+        </div>
+
+        <span class="badge">Conforme GDPR e Google Play Policy</span>
+
+        <p>
+            Benvenuto su <strong>Fuel Map Italia</strong> ("noi", "nostro", l'applicazione mobile e web accessibile all'indirizzo <em>fuel-map-it.onrender.com</em>).
+            La protezione della tua privacy è una nostra priorità assoluta: la nostra applicazione è progettata secondo il principio di <em>Privacy by Design</em> e non richiede alcuna registrazione né creazione di account personale.
+        </p>
+
+        <div class="highlight-box">
+            <strong>In sintesi:</strong> Non vendiamo i tuoi dati, non tracciamo la tua identità personale e non ti chiediamo password o dati di pagamento.
+        </div>
+
+        <h2>1. Dati sulla Posizione Geografica (GPS)</h2>
+        <p>
+            Fuel Map Italia richiede l'accesso alla geolocalizzazione (permessi <code>ACCESS_FINE_LOCATION</code> e <code>ACCESS_COARSE_LOCATION</code>) esclusivamente quando l'applicazione è in uso:
+        </p>
+        <ul>
+            <li><strong>Finalità:</strong> Mostrare sulla mappa la tua posizione attuale, calcolare la distanza chilometrica dai distributori, tracciare percorsi ottimali (Pit-Stop Planner) e inviarti avvisi sonori/notifiche radar solo quando ti avvicini a pompe particolarmente convenienti entro 1.5 km.</li>
+            <li><strong>Conservazione:</strong> Le tue coordinate GPS in tempo reale vengono elaborate localmente sul tuo dispositivo e inviate in forma anonima e temporanea al nostro server unicamente per richiedere i distributori presenti nel raggio selezionato. <strong>Non conserviamo alcuno storico dei tuoi spostamenti.</strong></li>
+        </ul>
+
+        <h2>2. Dati delle Segnalazioni Crowdsourcing e Foto</h2>
+        <p>
+            Se decidi di inviare una segnalazione (prezzo, coda o stato pompa):
+        </p>
+        <ul>
+            <li>Viene generato un identificativo casuale anonimo di sessione (UUID) e un'impronta crittografica (hash SHA-256) per prevenire spam o voti multipli fraudolenti.</li>
+            <li>Se alleghi una fotografia per verificare i prezzi, l'immagine viene compressa in formato WebP, privata di metadati personali sensibili e archiviata unicamente per la verifica dello stato del distributore da parte della community.</li>
+        </ul>
+
+        <h2>3. Dati Statistici e Analitici (Google Analytics 4)</h2>
+        <p>
+            Utilizziamo Google Analytics 4 (Stream ID <code>G-CBNCSSD815</code>) in modalità anonimizzata al solo scopo di monitorare le prestazioni tecniche, il traffico aggregato e la stabilità dell'applicazione (crash, tempi di risposta delle mappe). Nessun dato che consenta l'identificazione diretta dell'utente viene raccolto o condiviso.
+        </p>
+
+        <h2>4. Salvataggio Locale (LocalStorage)</h2>
+        <p>
+            L'applicazione salva esclusivamente sul tuo dispositivo, tramite tecnologia <code>localStorage</code>:
+        </p>
+        <ul>
+            <li>I tuoi distributori preferiti contrassegnati con la stella (⭐).</li>
+            <li>Le tue preferenze d'interfaccia (Tema Notturno, carburante predefinito, stato radar).</li>
+        </ul>
+        <p>Questi dati rimangono confinati nel tuo smartphone o browser e non vengono mai trasferiti a server esterni.</p>
+
+        <h2>5. Diritti dell'Utente (GDPR) e Contatti</h2>
+        <p>
+            In qualità di utente, ai sensi del Regolamento Europeo 2016/679 (GDPR), hai il diritto di richiedere informazioni sui dati trattati o richiedere la cancellazione di eventuali segnalazioni da te inviate.
+        </p>
+        <p>
+            Per qualsiasi domanda relativa alla presente informativa sulla privacy o per contattare lo sviluppatore:
+            <br>
+            <strong>Email di contatto:</strong> <a href="mailto:gianpidandrea@gmail.com">gianpidandrea@gmail.com</a>
+        </p>
+
+        <div class="footer">
+            © 2026 Fuel Map Italia — Tutti i diritti riservati.
+        </div>
+    </div>
+</body>
+</html>

@@ -392,6 +392,33 @@ const API = {
         return response.json();
     },
 
+    async inviaFeedback(messaggio, email = null) {
+        const sessionId = this.getSessionId();
+        const response = await fetch(`${this.baseUrl}/api/segnalazioni/feedback`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Session-Id': sessionId
+            },
+            body: JSON.stringify({
+                messaggio,
+                email,
+                app_version: '1.0.0'
+            })
+        });
+
+        if (!response.ok) {
+            let errorMessage = `Errore invio feedback: ${response.status}`;
+            try {
+                const errBody = await response.json();
+                if (errBody && errBody.errore) errorMessage = errBody.errore;
+            } catch {}
+            throw new Error(errorMessage);
+        }
+
+        return response.json();
+    },
+
     getSessionId() {
         const storageKey = 'fuelmap_session';
 
