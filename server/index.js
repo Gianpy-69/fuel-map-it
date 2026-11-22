@@ -3,6 +3,7 @@
 // ============================================
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const path = require('path');
 require('dotenv').config();
 
@@ -12,6 +13,59 @@ const { initScheduler } = require('./cron/scheduler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Security Headers con Helmet (Configurato per Leaflet, OpenStreetMap, Analytics e Capacitor)
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                "https://unpkg.com",
+                "https://www.googletagmanager.com",
+                "https://*.google-analytics.com"
+            ],
+            styleSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                "https://unpkg.com",
+                "https://fonts.googleapis.com"
+            ],
+            fontSrc: [
+                "'self'",
+                "https://fonts.gstatic.com"
+            ],
+            imgSrc: [
+                "'self'",
+                "data:",
+                "blob:",
+                "https://*.tile.openstreetmap.org",
+                "https://*.openstreetmap.org",
+                "https://server.arcgisonline.com",
+                "https://unpkg.com",
+                "https://www.google-analytics.com",
+                "https://*.googletagmanager.com"
+            ],
+            connectSrc: [
+                "'self'",
+                "https://photon.komoot.io",
+                "https://nominatim.openstreetmap.org",
+                "https://router.project-osrm.org",
+                "https://fuel-map-it.onrender.com",
+                "https://*.google-analytics.com",
+                "https://*.analytics.google.com",
+                "https://*.googletagmanager.com",
+                "capacitor://localhost",
+                "ionic://localhost",
+                "https://localhost"
+            ],
+            workerSrc: ["'self'", "blob:"],
+            upgradeInsecureRequests: null
+        }
+    },
+    crossOriginEmbedderPolicy: false
+}));
 
 // Middleware globali
 app.use(cors({

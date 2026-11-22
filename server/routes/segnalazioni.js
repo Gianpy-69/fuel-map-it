@@ -6,21 +6,20 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
+const sharp = require('sharp');
 const pool = require('../db');
 const rateLimiter = require('../middleware/rateLimiter');
 
-// Configurazione Upload Foto con Multer
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, path.join(__dirname, '..', '..', 'public', 'uploads'));
-    },
-    filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-        const uniqueName = `report_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
-        cb(null, uniqueName);
-    }
-});
+// Cartella upload locale per caching rapido
+const uploadDir = path.join(__dirname, '..', '..', 'public', 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Configurazione Upload Foto in memoria per elaborazione e compressione WebP
+const storage = multer.memoryStorage();
 
 const upload = multer({
     storage,
@@ -31,6 +30,44 @@ const upload = multer({
         const ext = allowed.test(path.extname(file.originalname).toLowerCase());
         if (mime && ext) return cb(null, true);
         cb(new Error('Formato immagine non supportato. Usa JPG, PNG o WebP.'));
+    }
+});
+
+// GET /api/segnalazioni/foto/:filename - Recupero persistente foto (Cache locale o Supabase DB)
+router.get('/foto/:filename', async (req, res) => {
+    try {
+        const filename = path.basename(req.params.filename);
+        const filePath = path.join(uploadDir, filename);
+
+        // 1. Se il file è presente nella cache locale del server
+        if (fs.existsSync(filePath)) {
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            return res.sendFile(filePath);
+        }
+
+        // 2. Se il disco di Render si è azzerato al riavvio, recupera il backup da PostgreSQL
+        const result = await pool.query(`
+            SELECT dettagli->>'foto_base64' AS foto_base64
+            FROM segnalazioni_utenti
+            WHERE dettagli->>'foto_filename' = $1 OR dettagli->>'foto_url' LIKE '%' || $1
+            LIMIT 1
+        `, [filename]);
+
+        if (result.rows.length > 0 && result.rows[0].foto_base64) {
+            const imgBuffer = Buffer.from(result.rows[0].foto_base64, 'base64');
+            try {
+                fs.writeFileSync(filePath, imgBuffer);
+            } catch (_) {}
+
+            res.setHeader('Content-Type', 'image/webp');
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+            return res.send(imgBuffer);
+        }
+
+        return res.status(404).send('Foto non trovata');
+    } catch (err) {
+        console.error('Errore recupero foto segnalazione:', err.message);
+        return res.status(500).send('Errore caricamento immagine');
     }
 });
 
@@ -58,7 +95,26 @@ router.post('/', rateLimiter, upload.single('foto'), async (req, res) => {
         }
 
         if (req.file) {
-            dettagli.foto_url = `/uploads/${req.file.filename}`;
+            try {
+                // Comprimi e ottimizza immagine in WebP (max 1000px, 30-50 KB)
+                const compressedBuffer = await sharp(req.file.buffer)
+                    .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 78 })
+                    .toBuffer();
+
+                const filename = `report_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.webp`;
+                const filePath = path.join(uploadDir, filename);
+
+                // Scrivi su disco per accesso immediato
+                fs.writeFileSync(filePath, compressedBuffer);
+
+                // Salva backup persistente in base64 nel database per non perderla ai riavvii
+                dettagli.foto_filename = filename;
+                dettagli.foto_base64 = compressedBuffer.toString('base64');
+                dettagli.foto_url = `/api/segnalazioni/foto/${filename}`;
+            } catch (imgErr) {
+                console.warn('Errore compressione foto:', imgErr.message);
+            }
         }
 
         const distCheck = await client.query('SELECT id FROM distributori WHERE id = $1', [distributore_id]);
