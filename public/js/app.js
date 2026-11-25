@@ -1421,20 +1421,6 @@ const App = {
             return Number.isFinite(price) && price > 0 ? price : Infinity;
         };
 
-        const compareCandidates = (first, second) => {
-            const firstPrice = stationPrice(first);
-            const secondPrice = stationPrice(second);
-            const progressDifference = second.progressioneKm - first.progressioneKm;
-            const priceToleranceKm = Math.min(3, autonomyKm * 0.05);
-
-            if (Math.abs(progressDifference) > priceToleranceKm) {
-                return progressDifference;
-            }
-            if (firstPrice !== secondPrice) return firstPrice - secondPrice;
-
-            return progressDifference;
-        };
-
         for (let index = 0; index < maxIterations; index++) {
             if (totalDistanceKm - lastStopKm <= autonomyKm) break;
 
@@ -1459,8 +1445,20 @@ const App = {
 
             if (!candidates.length) break;
 
-            candidates.sort(compareCandidates);
-            const stop = candidates[0];
+            const furthestCandidateKm = Math.max(
+                ...candidates.map((station) => Number(station.progressioneKm))
+            );
+            const priceToleranceKm = Math.min(3, autonomyKm * 0.05);
+            const preferredCandidates = candidates.filter((station) =>
+                furthestCandidateKm - Number(station.progressioneKm) <= priceToleranceKm
+            );
+            preferredCandidates.sort((first, second) => {
+                const priceDifference = stationPrice(first) - stationPrice(second);
+                if (priceDifference !== 0) return priceDifference;
+                return second.progressioneKm - first.progressioneKm;
+            });
+
+            const stop = preferredCandidates[0];
             const stopKm = Number(stop.progressioneKm);
             if (!Number.isFinite(stopKm) || stopKm <= lastStopKm + 5) break;
 
