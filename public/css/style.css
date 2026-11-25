@@ -2151,6 +2151,15 @@ body.dark-theme .switch-toggle input:checked + .toggle-slider {
     gap: 8px;
 }
 
+.route-search-wrap {
+    position: relative;
+    z-index: 1;
+}
+
+.route-search-wrap.has-suggestions {
+    z-index: 12;
+}
+
 .route-input-group {
     display: flex;
     align-items: center;
@@ -2162,6 +2171,12 @@ body.dark-theme .switch-toggle input:checked + .toggle-slider {
     height: 42px;
 }
 
+.route-search-wrap.has-suggestions .route-input-group {
+    border-radius: 10px 10px 0 0;
+    border-color: #D2D8E0;
+    box-shadow: 0 1px 4px rgba(60, 64, 67, 0.14);
+}
+
 .route-input-group input {
     border: none;
     outline: none;
@@ -2170,6 +2185,27 @@ body.dark-theme .switch-toggle input:checked + .toggle-slider {
     font-size: 13px;
     width: 100%;
     color: #111827;
+}
+
+.route-search-suggestions {
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: min(36vh, 280px);
+    border-radius: 0 0 12px 12px;
+    border-top: 0;
+    z-index: 1200;
+}
+
+.route-search-suggestions .suggestion-item {
+    min-height: 56px;
+    padding: 7px 12px;
+    gap: 12px;
+}
+
+.route-search-suggestions .suggestion-icon {
+    width: 34px;
+    height: 34px;
 }
 
 .route-dot {
@@ -2305,6 +2341,10 @@ body.dark-theme .btn-close-route {
 body.dark-theme .route-input-group {
     background: #0F172A;
     border-color: #334155;
+}
+
+body.dark-theme .route-search-wrap.has-suggestions .route-input-group {
+    border-color: #475569;
 }
 
 body.dark-theme .route-input-group input {

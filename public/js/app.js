@@ -23,6 +23,16 @@ function getBrandPhoto(bandiera) {
     return BRAND_PHOTOS.default;
 }
 
+function getLocationSuggestionIcon(kind) {
+    if (kind === 'Città') {
+        return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14M2 21h20M8 10h1m6 0h1M8 14h1m6 0h1M10 21v-4h4v4"/></svg>';
+    }
+    if (kind === 'Via') {
+        return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3-4 18m12-18 4 18M12 3v3m0 4v4m0 4v3"/></svg>';
+    }
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>';
+}
+
 // ============================================
 // Controller Dynamic Island (Apple Live Activity)
 // ============================================
@@ -438,16 +448,6 @@ const App = {
                 searchInput.setAttribute('aria-expanded', 'true');
             };
 
-            const getSuggestionIcon = (kind) => {
-                if (kind === 'Città') {
-                    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14M2 21h20M8 10h1m6 0h1M8 14h1m6 0h1M10 21v-4h4v4"/></svg>';
-                }
-                if (kind === 'Via') {
-                    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3-4 18m12-18 4 18M12 3v3m0 4v4m0 4v3"/></svg>';
-                }
-                return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>';
-            };
-
             const renderEmptyState = (message, icon = '⌕') => {
                 suggestionsWrap.innerHTML = `
                     <div class="suggestion-state" role="status" aria-live="polite">
@@ -461,7 +461,7 @@ const App = {
             const renderSuggestions = () => {
                 suggestionsWrap.innerHTML = currentSuggestions.map((item, index) => `
                     <div id="search-suggestion-${index}" class="suggestion-item" role="option" aria-selected="false" data-index="${index}">
-                        <span class="suggestion-icon">${getSuggestionIcon(item.kind)}</span>
+                        <span class="suggestion-icon">${getLocationSuggestionIcon(item.kind)}</span>
                         <span class="suggestion-content">
                             <span class="suggestion-title">${this.escapeHtml(item.title)}</span>
                             <span class="suggestion-subtitle">${this.escapeHtml(item.subtitle)}</span>
@@ -822,7 +822,241 @@ const App = {
         const destInput = document.getElementById('routeDestInput');
 
         if (btnOpenRoute && routeModal) {
+            const setupRouteAutocomplete = (input, suggestionsWrap) => {
+                if (!input || !suggestionsWrap) {
+                    return { hide: () => {}, clearSelection: () => {} };
+                }
+
+                const searchWrap = input.closest('.route-search-wrap');
+                let currentSuggestions = [];
+                let activeSuggestionIndex = -1;
+                let suggestionsRequestId = 0;
+                let debounceTimer = null;
+                let suggestionsController = null;
+
+                const clearSelection = () => {
+                    delete input.dataset.selectedLocationValue;
+                    delete input.dataset.selectedLocationTitle;
+                    delete input.dataset.selectedLocationLat;
+                    delete input.dataset.selectedLocationLon;
+                };
+
+                const cancelPendingSuggestions = () => {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = null;
+                    suggestionsRequestId++;
+
+                    if (suggestionsController) {
+                        suggestionsController.abort();
+                        suggestionsController = null;
+                    }
+
+                    return suggestionsRequestId;
+                };
+
+                const hideSuggestions = () => {
+                    suggestionsWrap.classList.add('hidden');
+                    searchWrap?.classList.remove('has-suggestions');
+                    input.setAttribute('aria-expanded', 'false');
+                    input.removeAttribute('aria-activedescendant');
+                    currentSuggestions = [];
+                    activeSuggestionIndex = -1;
+                    suggestionsWrap.innerHTML = '';
+                };
+
+                const showSuggestions = () => {
+                    suggestionsWrap.classList.remove('hidden');
+                    searchWrap?.classList.add('has-suggestions');
+                    input.setAttribute('aria-expanded', 'true');
+                };
+
+                const renderEmptyState = (message, icon = '⌕') => {
+                    suggestionsWrap.innerHTML = `
+                        <div class="suggestion-state" role="status" aria-live="polite">
+                            <span class="suggestion-state-icon" aria-hidden="true">${icon}</span>
+                            <span>${this.escapeHtml(message)}</span>
+                        </div>
+                    `;
+                    showSuggestions();
+                };
+
+                const renderSuggestions = () => {
+                    suggestionsWrap.innerHTML = currentSuggestions.map((item, index) => `
+                        <div id="${input.id}-suggestion-${index}" class="suggestion-item" role="option" aria-selected="false" data-index="${index}">
+                            <span class="suggestion-icon">${getLocationSuggestionIcon(item.kind)}</span>
+                            <span class="suggestion-content">
+                                <span class="suggestion-title">${this.escapeHtml(item.title)}</span>
+                                <span class="suggestion-subtitle">${this.escapeHtml(item.subtitle)}</span>
+                            </span>
+                        </div>
+                    `).join('');
+                    showSuggestions();
+                };
+
+                const setActiveSuggestion = (index) => {
+                    if (!currentSuggestions.length) return;
+
+                    activeSuggestionIndex = index;
+                    suggestionsWrap.querySelectorAll('.suggestion-item').forEach((element, itemIndex) => {
+                        const isActive = itemIndex === activeSuggestionIndex;
+                        element.classList.toggle('active', isActive);
+                        element.setAttribute('aria-selected', String(isActive));
+                    });
+
+                    input.setAttribute('aria-activedescendant', `${input.id}-suggestion-${activeSuggestionIndex}`);
+                    suggestionsWrap.querySelector('.suggestion-item.active')?.scrollIntoView({ block: 'nearest' });
+                };
+
+                const selectSuggestion = (item) => {
+                    cancelPendingSuggestions();
+                    const fullText = item.title + (item.subtitle ? `, ${item.subtitle}` : '');
+                    input.value = fullText;
+                    input.dataset.selectedLocationValue = fullText;
+                    input.dataset.selectedLocationTitle = item.title;
+                    input.dataset.selectedLocationLat = String(item.lat);
+                    input.dataset.selectedLocationLon = String(item.lon);
+                    hideSuggestions();
+                };
+
+                suggestionsWrap.addEventListener('click', (event) => {
+                    const row = event.target.closest('.suggestion-item');
+                    if (!row) return;
+
+                    const index = Number.parseInt(row.dataset.index, 10);
+                    if (currentSuggestions[index]) {
+                        selectSuggestion(currentSuggestions[index]);
+                    }
+                });
+
+                input.addEventListener('input', () => {
+                    const val = input.value.trim();
+                    if (input.dataset.selectedLocationValue !== val) clearSelection();
+
+                    const requestId = cancelPendingSuggestions();
+                    currentSuggestions = [];
+                    activeSuggestionIndex = -1;
+                    input.removeAttribute('aria-activedescendant');
+
+                    if (val.length < 2) {
+                        hideSuggestions();
+                        return;
+                    }
+
+                    renderEmptyState('Cerco luoghi…', '');
+                    debounceTimer = setTimeout(async () => {
+                        const controller = typeof AbortController === 'function'
+                            ? new AbortController()
+                            : null;
+                        suggestionsController = controller;
+
+                        try {
+                            const suggestions = await API.getSearchSuggestions(val, {
+                                signal: controller?.signal
+                            });
+                            if (requestId !== suggestionsRequestId || val !== input.value.trim()) return;
+
+                            currentSuggestions = suggestions || [];
+                            if (!currentSuggestions.length) {
+                                renderEmptyState('Nessun risultato. Premi Invio per cercare comunque.');
+                                return;
+                            }
+
+                            renderSuggestions();
+                        } catch (err) {
+                            if (err?.name === 'AbortError' || requestId !== suggestionsRequestId) return;
+                            console.warn('Errore recupero suggerimenti percorso:', err);
+                            renderEmptyState('Suggerimenti non disponibili. Premi Invio per cercare.');
+                        } finally {
+                            if (suggestionsController === controller) suggestionsController = null;
+                        }
+                    }, 300);
+                });
+
+                input.addEventListener('keydown', (event) => {
+                    if (event.key === 'ArrowDown' && currentSuggestions.length) {
+                        event.preventDefault();
+                        const nextIndex = activeSuggestionIndex < 0
+                            ? 0
+                            : (activeSuggestionIndex + 1) % currentSuggestions.length;
+                        setActiveSuggestion(nextIndex);
+                        return;
+                    }
+
+                    if (event.key === 'ArrowUp' && currentSuggestions.length) {
+                        event.preventDefault();
+                        const previousIndex = activeSuggestionIndex < 0
+                            ? currentSuggestions.length - 1
+                            : (activeSuggestionIndex - 1 + currentSuggestions.length) % currentSuggestions.length;
+                        setActiveSuggestion(previousIndex);
+                        return;
+                    }
+
+                    if (event.key === 'Escape') {
+                        cancelPendingSuggestions();
+                        hideSuggestions();
+                        return;
+                    }
+
+                    if (event.key !== 'Enter') return;
+
+                    const selectedSuggestion = currentSuggestions[activeSuggestionIndex] || currentSuggestions[0];
+                    if (selectedSuggestion) {
+                        event.preventDefault();
+                        selectSuggestion(selectedSuggestion);
+                        return;
+                    }
+
+                    const query = input.value.trim();
+                    const isCurrentLocation = input === startInput && query.toLowerCase().includes('posizione');
+                    if (query.length < 2 || isCurrentLocation) return;
+
+                    event.preventDefault();
+                    const requestId = cancelPendingSuggestions();
+                    hideSuggestions();
+                    API.geocode(query).then((location) => {
+                        if (requestId !== suggestionsRequestId || input.value.trim() !== query) return;
+                        selectSuggestion({
+                            title: location.nome || query,
+                            subtitle: '',
+                            lat: location.lat,
+                            lon: location.lon
+                        });
+                    }).catch(() => {
+                        if (requestId !== suggestionsRequestId || input.value.trim() !== query) return;
+                        renderEmptyState('Luogo non trovato. Controlla la ricerca.');
+                    });
+                });
+
+                return {
+                    hide() {
+                        cancelPendingSuggestions();
+                        hideSuggestions();
+                    },
+                    clearSelection
+                };
+            };
+
+            const startAutocomplete = setupRouteAutocomplete(
+                startInput,
+                document.getElementById('routeStartSuggestions')
+            );
+            const destAutocomplete = setupRouteAutocomplete(
+                destInput,
+                document.getElementById('routeDestSuggestions')
+            );
+            const hideRouteSuggestions = () => {
+                startAutocomplete.hide();
+                destAutocomplete.hide();
+            };
+
+            document.addEventListener('click', (event) => {
+                if (!event.target.closest('#routeModalCard .route-search-wrap')) {
+                    hideRouteSuggestions();
+                }
+            });
+
             btnOpenRoute.addEventListener('click', () => {
+                if (!routeModal.classList.contains('hidden')) hideRouteSuggestions();
                 routeModal.classList.toggle('hidden');
                 if (!routeModal.classList.contains('hidden')) {
                     if (FuelMap.userLat && FuelMap.userLon && (!startInput.value || startInput.value.includes('posizione'))) {
@@ -833,17 +1067,22 @@ const App = {
             });
 
             if (btnCloseRoute) {
-                btnCloseRoute.addEventListener('click', () => routeModal.classList.add('hidden'));
+                btnCloseRoute.addEventListener('click', () => {
+                    hideRouteSuggestions();
+                    routeModal.classList.add('hidden');
+                });
             }
 
             if (btnClearRoute) {
                 btnClearRoute.addEventListener('click', () => {
+                    hideRouteSuggestions();
                     this.isRouteModeActive = false;
                     this.currentRouteStart = null;
                     this.currentRouteDest = null;
                     FuelMap.clearRoute();
                     btnClearRoute.classList.add('hidden');
                     destInput.value = '';
+                    destAutocomplete.clearSelection();
                     routeModal.classList.add('hidden');
                     this.closeSheet();
                     this.loadDistributori(this.currentLat, this.currentLon);
@@ -881,6 +1120,19 @@ const App = {
         const carburante = carbSelect.value;
         const preferenza = typeSelect ? typeSelect.value : 'tutte';
         const autonomiaKm = sliderAutonomia ? parseInt(sliderAutonomia.value, 10) : 250;
+        const getSelectedLocation = (input, value) => {
+            if (!input || input.dataset.selectedLocationValue !== value) return null;
+
+            const lat = Number(input.dataset.selectedLocationLat);
+            const lon = Number(input.dataset.selectedLocationLon);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+            return {
+                lat,
+                lon,
+                nome: input.dataset.selectedLocationTitle || value
+            };
+        };
 
         if (!destVal) {
             this.showToast('⚠️ Inserisci una destinazione (es. Firenze)');
@@ -894,8 +1146,11 @@ const App = {
         try {
             // 1. Coordinate di partenza
             let startCoord = null;
+            const selectedStartLocation = getSelectedLocation(startInput, startVal);
             if (startVal.toLowerCase().includes('posizione') && FuelMap.userLat && FuelMap.userLon) {
                 startCoord = { lat: FuelMap.userLat, lon: FuelMap.userLon, nome: 'La mia posizione' };
+            } else if (selectedStartLocation) {
+                startCoord = selectedStartLocation;
             } else if (startVal) {
                 startCoord = await API.geocode(startVal);
             } else if (FuelMap.userLat && FuelMap.userLon) {
@@ -905,7 +1160,7 @@ const App = {
             }
 
             // 2. Coordinate di arrivo
-            const destCoord = await API.geocode(destVal);
+            const destCoord = getSelectedLocation(destInput, destVal) || await API.geocode(destVal);
 
             // Salva coordinate correnti per waypoint Google Maps
             this.currentRouteStart = startCoord;

@@ -346,13 +346,19 @@
             <button type="button" class="btn-close-route" id="btnCloseRoute">✕</button>
         </div>
         <div class="route-inputs-body">
-            <div class="route-input-group">
-                <span class="route-dot green">●</span>
-                <input type="text" id="routeStartInput" placeholder="Partenza (es. Posizione attuale o Roma)" autocomplete="off" />
+            <div class="route-search-wrap">
+                <div class="route-input-group">
+                    <span class="route-dot green">●</span>
+                    <input type="text" id="routeStartInput" placeholder="Partenza (es. Posizione attuale o Roma)" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="routeStartSuggestions" />
+                </div>
+                <div id="routeStartSuggestions" class="search-suggestions route-search-suggestions hidden" role="listbox" aria-label="Suggerimenti per la partenza"></div>
             </div>
-            <div class="route-input-group">
-                <span class="route-dot red">📍</span>
-                <input type="text" id="routeDestInput" placeholder="Destinazione (es. Firenze, Milano...)" autocomplete="off" />
+            <div class="route-search-wrap">
+                <div class="route-input-group">
+                    <span class="route-dot red">📍</span>
+                    <input type="text" id="routeDestInput" placeholder="Destinazione (es. Firenze, Milano...)" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="routeDestSuggestions" />
+                </div>
+                <div id="routeDestSuggestions" class="search-suggestions route-search-suggestions hidden" role="listbox" aria-label="Suggerimenti per la destinazione"></div>
             </div>
             <div class="route-carb-row">
                 <label for="routeCarbSelect">Carburante:</label>
