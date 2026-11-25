@@ -390,14 +390,22 @@
             <!-- Pit-Stop Planner: Autonomia Residua -->
             <div class="route-autonomy-box">
                 <div class="autonomy-header">
-                    <label for="inputAutonomia">⛽ Autonomia residua stimata:</label>
+                    <label for="inputAutonomia">⛽ Autonomia residua attuale:</label>
                     <span class="autonomy-val-badge" id="lblAutonomiaVal">250 km</span>
                 </div>
                 <input type="range" id="inputAutonomia" min="50" max="800" step="25" value="250" class="autonomy-slider">
                 <div class="autonomy-legend">
                     <span>50 km (Riserva)</span>
-                    <span>Pieno (800 km)</span>
+                    <span>800 km</span>
                 </div>
+                <div class="autonomy-refill-row">
+                    <label for="inputAutonomiaRifornimento">Dopo ogni sosta prevedi di avere:</label>
+                    <div class="autonomy-refill-input">
+                        <input type="number" id="inputAutonomiaRifornimento" min="50" max="1500" step="25" inputmode="numeric" placeholder="Es. 500" aria-describedby="autonomyRefillHelp">
+                        <span>km</span>
+                    </div>
+                </div>
+                <p class="autonomy-refill-help" id="autonomyRefillHelp">Inserisci l’autonomia prevista dopo il rabbocco. Se non lo sai, lascia vuoto: ti mostreremo la prima sosta.</p>
             </div>
             <button type="button" class="btn-calc-route" id="btnCalcRoute">
                 <span>🔍 Trova Pompe sul Percorso</span>

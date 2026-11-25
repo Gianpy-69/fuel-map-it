@@ -107,7 +107,9 @@ const DynamicIsland = {
         const stopNumber = station.pitStopNumber || 1;
         this.show({
             icon: '🎯',
-            title: `Sosta ${stopNumber}/${totalStops} • km ${Math.round(kmProgress)}`,
+            title: totalStops
+                ? `Sosta ${stopNumber}/${totalStops} • km ${Math.round(kmProgress)}`
+                : `Prima sosta • km ${Math.round(kmProgress)}`,
             subtitle: station.bandiera || station.nome || 'Rifornimento sicuro',
             badge: station.prezzo_benzina ? `€ ${parseFloat(station.prezzo_benzina).toFixed(3)}` : 'TAPPA',
             type: 'pitstop',
@@ -145,6 +147,7 @@ const App = {
     currentRouteStart: null,
     currentRouteDest: null,
     currentPitStops: [],
+    currentPitStopsCountKnown: true,
     isRadarActive: false,
     radarWatchId: null,
     lastGlobalNotificationTime: 0,
@@ -1141,6 +1144,7 @@ const App = {
                     this.currentRouteStart = null;
                     this.currentRouteDest = null;
                     this.currentPitStops = [];
+                    this.currentPitStopsCountKnown = true;
                     FuelMap.clearRoute();
                     btnClearRoute.classList.add('hidden');
                     destInput.value = '';
@@ -1176,6 +1180,7 @@ const App = {
         const btnCalc = document.getElementById('btnCalcRoute');
         const btnClear = document.getElementById('btnClearRoute');
         const sliderAutonomia = document.getElementById('inputAutonomia');
+        const refillAutonomyInput = document.getElementById('inputAutonomiaRifornimento');
 
         const startVal = startInput.value.trim();
         const destVal = destInput.value.trim();
@@ -1183,6 +1188,10 @@ const App = {
         const preferenza = typeSelect ? typeSelect.value : 'tutte';
         const includiChiusi = this.activeFilters.mostraChiusi;
         const autonomiaKm = sliderAutonomia ? parseInt(sliderAutonomia.value, 10) : 250;
+        const refillAutonomyValue = refillAutonomyInput?.value.trim() || '';
+        const refillAutonomiaKm = refillAutonomyValue === ''
+            ? null
+            : Number.parseInt(refillAutonomyValue, 10);
         const getSelectedLocation = (input, value) => {
             if (!input || input.dataset.selectedLocationValue !== value) return null;
 
@@ -1200,6 +1209,15 @@ const App = {
         if (!destVal) {
             this.showToast('⚠️ Inserisci una destinazione (es. Firenze)');
             destInput.focus();
+            return;
+        }
+
+        if (
+            refillAutonomyValue !== '' &&
+            (!Number.isFinite(refillAutonomiaKm) || refillAutonomiaKm < 50 || refillAutonomiaKm > 1500)
+        ) {
+            this.showToast('⚠️ L’autonomia dopo il rifornimento deve essere tra 50 e 1500 km.');
+            refillAutonomyInput?.focus();
             return;
         }
 
@@ -1272,18 +1290,29 @@ const App = {
                 : this.planRoutePitStops(
                     stations.filter((station) => station.stato !== 'chiuso'),
                     autonomiaKm,
+                    refillAutonomiaKm,
                     distTotKm,
                     carburante
                 );
             const { pitStops, safeWindows, complete, remainingDistanceKm } = routePlan;
             this.currentPitStops = pitStops;
+            this.currentPitStopsCountKnown =
+                distTotKm <= autonomiaKm || (complete && refillAutonomiaKm !== null);
             FuelMap.drawRefuelZones(route.geometry.coordinates, cumDist, safeWindows);
 
             if (distTotKm > autonomiaKm) {
                 if (carburante === 'tutte') {
                     this.showToast('Per suggerire le soste in base all’autonomia, scegli il carburante del veicolo.');
+                } else if (refillAutonomiaKm === null && pitStops.length) {
+                    const reserveWarning = pitStops[0].inSafeZone
+                        ? ''
+                        : ' La pompa è vicina al limite dell’autonomia.';
+                    this.showToast(`⛽ Prima sosta al km ${pitStops[0].progressioneKm.toFixed(0)}.${reserveWarning} Inserisci l’autonomia prevista dopo il rabbocco per stimare le altre.`);
                 } else if (complete) {
-                    this.showToast(`⛽ Servono ${pitStops.length} soste per ${distTotKm.toFixed(0)} km. Le trovi numerate sulla mappa.`);
+                    const reserveWarning = pitStops.some((stop) => !stop.inSafeZone)
+                        ? ' Almeno una pompa è vicina al limite dell’autonomia.'
+                        : '';
+                    this.showToast(`⛽ Servono ${pitStops.length} soste per ${distTotKm.toFixed(0)} km. Le trovi numerate sulla mappa.${reserveWarning}`);
                 } else if (pitStops.length) {
                     this.showToast(`⚠️ Ho trovato ${pitStops.length} soste, ma non pompe entro autonomia per gli ultimi ${remainingDistanceKm.toFixed(0)} km.`);
                 } else {
@@ -1372,7 +1401,7 @@ const App = {
                 DynamicIsland.showPitStop(
                     pitStops[0],
                     pitStops[0].progressioneKm,
-                    pitStops.length
+                    this.currentPitStopsCountKnown ? pitStops.length : null
                 );
             } else if (cheapestStation) {
                 DynamicIsland.showDeal(cheapestStation, `Al km ${Math.round(cheapestStation.progressioneKm || 0)}`, true);
@@ -1397,23 +1426,29 @@ const App = {
         }
     },
 
-    planRoutePitStops(stations, autonomyKm, totalDistanceKm, fuel) {
-        const safeWindowEndKm = Math.min(
-            autonomyKm * 0.9,
-            autonomyKm - Math.max(5, autonomyKm * 0.05)
-        );
-        const safeWindowStartKm = Math.max(
-            0,
-            safeWindowEndKm - Math.max(5, autonomyKm * 0.1)
-        );
+    planRoutePitStops(stations, initialAutonomyKm, refillAutonomyKm, totalDistanceKm, fuel) {
         const pitStops = [];
         const safeWindows = [];
         const usedStationIds = new Set();
         let lastStopKm = 0;
-        const maxIterations = Math.min(
-            100,
-            Math.max(1, Math.ceil(totalDistanceKm / Math.max(safeWindowStartKm, 1)) + 1)
-        );
+        let rangeForNextLegKm = initialAutonomyKm;
+        const maxIterations = 100;
+
+        const getSafeWindow = (rangeKm, startKm) => {
+            const endOffsetKm = Math.min(
+                rangeKm * 0.9,
+                rangeKm - Math.max(5, rangeKm * 0.05)
+            );
+            const startOffsetKm = Math.max(
+                0,
+                endOffsetKm - Math.max(5, rangeKm * 0.1)
+            );
+
+            return {
+                startKm: startKm + startOffsetKm,
+                endKm: Math.min(totalDistanceKm, startKm + endOffsetKm)
+            };
+        };
 
         const stationPrice = (station) => {
             const rawPrice = station[`prezzo_${fuel}`] ?? station.prezzo_benzina ?? station.prezzo_diesel;
@@ -1422,22 +1457,23 @@ const App = {
         };
 
         for (let index = 0; index < maxIterations; index++) {
-            if (totalDistanceKm - lastStopKm <= autonomyKm) break;
+            if (totalDistanceKm - lastStopKm <= rangeForNextLegKm) break;
 
-            const windowStartKm = lastStopKm + safeWindowStartKm;
-            const windowEndKm = Math.min(
+            const safeWindow = getSafeWindow(rangeForNextLegKm, lastStopKm);
+            const reachableEndKm = Math.min(
                 totalDistanceKm,
-                lastStopKm + safeWindowEndKm
+                lastStopKm + rangeForNextLegKm
             );
             const candidatesInReach = stations.filter((station) => {
                 const progressKm = Number(station.progressioneKm);
                 return Number.isFinite(progressKm) &&
                     progressKm > lastStopKm + 5 &&
-                    progressKm <= windowEndKm &&
+                    progressKm <= reachableEndKm &&
                     !usedStationIds.has(String(station.id));
             });
             const safeCandidates = candidatesInReach.filter((station) =>
-                station.progressioneKm >= windowStartKm
+                station.progressioneKm >= safeWindow.startKm &&
+                station.progressioneKm <= safeWindow.endKm
             );
             const candidates = safeCandidates.length
                 ? safeCandidates
@@ -1448,7 +1484,7 @@ const App = {
             const furthestCandidateKm = Math.max(
                 ...candidates.map((station) => Number(station.progressioneKm))
             );
-            const priceToleranceKm = Math.min(3, autonomyKm * 0.05);
+            const priceToleranceKm = Math.min(3, rangeForNextLegKm * 0.05);
             const preferredCandidates = candidates.filter((station) =>
                 furthestCandidateKm - Number(station.progressioneKm) <= priceToleranceKm
             );
@@ -1465,28 +1501,33 @@ const App = {
             stop.isRecommendedPitStop = true;
             stop.pitStopNumber = pitStops.length + 1;
             stop.inSafeZone = safeCandidates.includes(stop);
-            stop.safeWindowStartKm = windowStartKm;
-            stop.safeWindowEndKm = windowEndKm;
+            stop.safeWindowStartKm = safeWindow.startKm;
+            stop.safeWindowEndKm = safeWindow.endKm;
             pitStops.push(stop);
             usedStationIds.add(String(stop.id));
 
             if (stop.inSafeZone) {
                 safeWindows.push({
-                    startKm: windowStartKm,
-                    endKm: windowEndKm,
+                    startKm: safeWindow.startKm,
+                    endKm: safeWindow.endKm,
                     number: stop.pitStopNumber
                 });
             }
 
             lastStopKm = stopKm;
+            if (refillAutonomyKm === null) break;
+            rangeForNextLegKm = refillAutonomyKm;
         }
 
         const remainingDistanceKm = Math.max(0, totalDistanceKm - lastStopKm);
+        const complete = pitStops.length === 0
+            ? remainingDistanceKm <= initialAutonomyKm
+            : refillAutonomyKm !== null && remainingDistanceKm <= refillAutonomyKm;
 
         return {
             pitStops,
             safeWindows,
-            complete: remainingDistanceKm <= autonomyKm,
+            complete,
             remainingDistanceKm
         };
     },
@@ -1711,9 +1752,11 @@ const App = {
         if (pitstopBadge) {
             if (d.isRecommendedPitStop) {
                 const totalStops = this.currentPitStops.length || 1;
-                pitstopBadge.textContent = d.pitStopNumber
+                pitstopBadge.textContent = d.pitStopNumber && this.currentPitStopsCountKnown
                     ? `🎯 Sosta ${d.pitStopNumber} di ${totalStops} consigliata`
-                    : '🎯 Sosta Consigliata per Autonomia';
+                    : d.pitStopNumber
+                        ? '🎯 Prima sosta consigliata'
+                        : '🎯 Sosta Consigliata per Autonomia';
                 pitstopBadge.classList.remove('hidden');
             } else if (d.inSafeZone) {
                 pitstopBadge.textContent = '✅ Nella Finestra di Sosta';

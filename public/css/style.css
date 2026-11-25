@@ -2328,6 +2328,62 @@ body.dark-theme .route-mode-row .filter-chip-crown.active {
     margin-top: 2px;
 }
 
+.autonomy-refill-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+    color: #166534;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.autonomy-refill-row label {
+    flex: 1;
+}
+
+.autonomy-refill-input {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    padding: 4px 9px;
+    border: 1px solid #86EFAC;
+    border-radius: 9px;
+    background: #FFFFFF;
+    color: #166534;
+}
+
+.autonomy-refill-input input {
+    width: 66px;
+    padding: 2px 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    text-align: right;
+}
+
+.autonomy-refill-input input::placeholder {
+    color: #86A894;
+    font-size: 10px;
+}
+
+.autonomy-refill-input span {
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.autonomy-refill-help {
+    margin: 5px 0 0;
+    color: #15803D;
+    font-size: 10px;
+    line-height: 1.4;
+}
+
 body.dark-theme .route-autonomy-box {
     background: #064E3B;
     border-color: #047857;
@@ -2338,6 +2394,21 @@ body.dark-theme .autonomy-header {
 }
 
 body.dark-theme .autonomy-legend {
+    color: #A7F3D0;
+}
+
+body.dark-theme .autonomy-refill-row {
+    color: #D1FAE5;
+}
+
+body.dark-theme .autonomy-refill-input {
+    background: #064E3B;
+    border-color: #059669;
+    color: #ECFDF5;
+}
+
+body.dark-theme .autonomy-refill-input input::placeholder,
+body.dark-theme .autonomy-refill-help {
     color: #A7F3D0;
 }
 
