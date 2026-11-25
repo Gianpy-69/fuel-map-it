@@ -12,6 +12,7 @@ const FuelMap = {
     userLon: null,
     
     streetLayer: null,
+    streetLayerStyle: null,
     satelliteLayer: null,
     satelliteLabelsLayer: null,
 
@@ -19,10 +20,14 @@ const FuelMap = {
     isDarkMode: false,
 
     init() {
-        // Layer Principale Stradale OpenStreetMap (100% stabile, zero blocchi)
-        this.streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors',
-            maxZoom: 19
+        // Mappa stradale vettoriale OpenFreeMap (dati OSM, resa con MapLibre).
+        this.streetLayerStyle = this.isDarkMode
+            ? 'https://tiles.openfreemap.org/styles/dark'
+            : 'https://tiles.openfreemap.org/styles/liberty';
+        this.streetLayer = L.maplibreGL({
+            style: this.streetLayerStyle,
+            maxZoom: 19,
+            attributionControl: false
         });
 
         // Layer Satellite Esri World Imagery
@@ -41,6 +46,10 @@ const FuelMap = {
             attributionControl: true,
             layers: [this.streetLayer]
         }).setView([41.9028, 12.4964], 13);
+
+        this.map.attributionControl.addAttribution(
+            '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://openmaptiles.org" target="_blank" rel="noopener">OpenMapTiles</a> · Dati da <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+        );
 
         L.control.zoom({ position: 'bottomright' }).addTo(this.map);
 
@@ -191,8 +200,24 @@ const FuelMap = {
         this.map.flyTo([lat, lon], zoom, { duration: 1 });
     },
 
+    updateStreetStyle() {
+        const style = this.isDarkMode
+            ? 'https://tiles.openfreemap.org/styles/dark'
+            : 'https://tiles.openfreemap.org/styles/liberty';
+
+        if (this.streetLayerStyle === style) return;
+        this.streetLayerStyle = style;
+        if (!this.streetLayer) return;
+
+        this.streetLayer.options.style = style;
+        if (this.map && this.map.hasLayer(this.streetLayer)) {
+            const glMap = this.streetLayer.getMaplibreMap();
+            if (glMap) glMap.setStyle(style);
+        }
+    },
+
     updateBaseLayer() {
-        const mapEl = document.getElementById('map');
+        this.updateStreetStyle();
 
         if (this.isSatellite) {
             // Rimuovi mappa stradale
@@ -200,16 +225,12 @@ const FuelMap = {
             // Aggiungi satellite + etichette
             if (!this.map.hasLayer(this.satelliteLayer)) this.map.addLayer(this.satelliteLayer);
             if (!this.map.hasLayer(this.satelliteLabelsLayer)) this.map.addLayer(this.satelliteLabelsLayer);
-            // Disattiva filtro notturno su satellite
-            if (mapEl) mapEl.classList.remove('map-dark-tiles');
         } else {
             // Rimuovi satellite + etichette
             if (this.map.hasLayer(this.satelliteLayer)) this.map.removeLayer(this.satelliteLayer);
             if (this.map.hasLayer(this.satelliteLabelsLayer)) this.map.removeLayer(this.satelliteLabelsLayer);
             // Ripristina mappa stradale
             if (!this.map.hasLayer(this.streetLayer)) this.map.addLayer(this.streetLayer);
-            // Applica o rimuovi filtro notturno alla mappa stradale
-            if (mapEl) mapEl.classList.toggle('map-dark-tiles', this.isDarkMode);
         }
 
         setTimeout(() => this.map.invalidateSize(), 50);

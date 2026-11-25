@@ -1,7 +1,7 @@
 // ============================================
 // Service Worker — PWA Cache & Offline Shell
 // ============================================
-const CACHE_NAME = 'fuelmap-v22';
+const CACHE_NAME = 'fuelmap-v24';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -17,6 +17,9 @@ const STATIC_ASSETS = [
     '/manifest.json',
     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+    'https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.css',
+    'https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.js',
+    'https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js',
     'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css',
     'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css',
     'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js',
@@ -55,6 +58,12 @@ self.addEventListener('fetch', (event) => {
     }
 
     const url = new URL(event.request.url);
+
+    // Non mettere le tile dei provider mappa nella cache offline generica del service worker.
+    if (url.hostname === 'tile.openstreetmap.org' || url.hostname.endsWith('.tile.openstreetmap.org') ||
+        url.hostname === 'tiles.openfreemap.org' || url.hostname.endsWith('.tiles.openfreemap.org')) {
+        return;
+    }
 
     // Le chiamate API e Supabase vanno sempre via rete (fallback offline gestito in IndexedDB)
     if (url.pathname.startsWith('/api/') || url.hostname.includes('supabase.co')) {

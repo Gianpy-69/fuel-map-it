@@ -53,10 +53,6 @@ body.dark-theme #map {
     background: #0F172A;
 }
 
-/* Filtro Notturno Stradale ad altissima affidabilità (Zero tile 404, zero adblock, instant) */
-#map.map-dark-tiles .leaflet-tile-pane {
-    filter: invert(100%) hue-rotate(180deg) brightness(92%) contrast(90%);
-}
 
 /* --- Header di navigazione: ricerca + filtri --- */
 .top-nav {

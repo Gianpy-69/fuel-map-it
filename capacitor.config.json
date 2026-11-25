@@ -3,6 +3,7 @@
   "appName": "Fuel Map Italia",
   "webDir": "public",
   "bundledWebRuntime": false,
+  "appendUserAgent": "FuelMapItalia/1.0 (+https://fuel-map-it.onrender.com)",
   "server": {
     "androidScheme": "https"
   }
