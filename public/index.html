@@ -93,11 +93,11 @@
                 <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
                 </svg>
-                <input type="text" id="searchInput" class="search-input" placeholder="Cerca via, città o distributore..." autocomplete="off">
+                <input type="text" id="searchInput" class="search-input" placeholder="Cerca via, città o distributore..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="searchSuggestions">
                 <button type="button" id="btnClearSearch" class="btn-clear-search hidden" title="Cancella">✕</button>
             </div>
             <!-- Tendina Suggerimenti Autocomplete Stile Google Maps -->
-            <div id="searchSuggestions" class="search-suggestions hidden"></div>
+            <div id="searchSuggestions" class="search-suggestions hidden" role="listbox" aria-label="Suggerimenti di ricerca"></div>
         </div>
 
         <!-- Barra Filtri Compatta (Stile Fintech / Google Maps) -->

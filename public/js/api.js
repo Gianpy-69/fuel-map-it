@@ -190,6 +190,33 @@ const OfflineCache = {
     }
 };
 
+function normalizeSuggestionLabel(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('it-IT')
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim();
+}
+
+function uniqueSearchSuggestions(items) {
+    const seen = new Set();
+    const unique = [];
+
+    for (const item of items) {
+        if (!Number.isFinite(item.lat) || !Number.isFinite(item.lon)) continue;
+
+        const key = `${normalizeSuggestionLabel(item.title)}|${normalizeSuggestionLabel(item.subtitle)}`;
+        if (seen.has(key)) continue;
+
+        seen.add(key);
+        unique.push(item);
+        if (unique.length === 6) break;
+    }
+
+    return unique;
+}
+
 const API = {
     baseUrl: isNativeApp ? 'https://fuel-map-it.onrender.com' : '',
 
@@ -345,38 +372,43 @@ const API = {
         return response.json();
     },
 
-    async getSearchSuggestions(query) {
+    async getSearchSuggestions(query, { signal } = {}) {
         const q = typeof query === 'string' ? query.trim() : '';
         if (q.length < 2) return [];
 
         try {
-            const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=6&bbox=6.6,35.5,18.5,47.1`;
-            const res = await fetch(url);
+            const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=10&bbox=6.6,35.5,18.5,47.1`;
+            const res = await fetch(url, signal ? { signal } : undefined);
             if (!res.ok) throw new Error(`Photon status ${res.status}`);
             const data = await res.json();
 
             if (!data || !Array.isArray(data.features)) return [];
 
-            return data.features.map(f => {
+            const suggestions = data.features.map(f => {
                 const p = f.properties || {};
                 const coords = f.geometry?.coordinates || [];
                 const subtitleParts = [p.street, p.city, p.state].filter(Boolean);
                 const title = p.name || p.street || p.city || 'Luogo';
                 const subtitle = subtitleParts.filter(s => s.toLowerCase() !== title.toLowerCase()).join(', ') || 'Italia';
 
-                let icon = '📍';
-                if (p.type === 'city') icon = '🏙️';
-                else if (p.type === 'street') icon = '🛣️';
+                const isCity = p.type === 'city';
+                const isStreet = p.type === 'street';
+                const icon = isCity ? '🏙️' : (isStreet ? '🛣️' : '📍');
 
                 return {
                     title,
                     subtitle,
                     icon,
+                    kind: isCity ? 'Città' : (isStreet ? 'Via' : 'Luogo'),
                     lat: coords[1],
                     lon: coords[0]
                 };
             }).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lon));
+
+            return uniqueSearchSuggestions(suggestions);
         } catch (err) {
+            if (err?.name === 'AbortError') return [];
+
             try {
                 const fallbackUrl = 'https://nominatim.openstreetmap.org/search?' +
                     new URLSearchParams({
@@ -388,22 +420,29 @@ const API = {
                     }).toString();
 
                 const resFallback = await fetch(fallbackUrl, {
-                    headers: { Accept: 'application/json' }
+                    headers: { Accept: 'application/json' },
+                    ...(signal ? { signal } : {})
                 });
+                if (!resFallback.ok) return [];
                 const dataFallback = await resFallback.json();
                 if (!Array.isArray(dataFallback)) return [];
 
-                return dataFallback.map(item => {
+                return uniqueSearchSuggestions(dataFallback.map(item => {
                     const parts = (item.display_name || '').split(',');
+                    const kind = ['city', 'town', 'village', 'municipality'].includes(item.type)
+                        ? 'Città'
+                        : (item.type === 'road' ? 'Via' : 'Luogo');
                     return {
                         title: parts[0]?.trim() || item.name || 'Luogo',
                         subtitle: parts.slice(1, 3).map(s => s.trim()).join(', ') || 'Italia',
-                        icon: '📍',
+                        icon: kind === 'Città' ? '🏙️' : (kind === 'Via' ? '🛣️' : '📍'),
+                        kind,
                         lat: parseFloat(item.lat),
                         lon: parseFloat(item.lon)
                     };
                 }).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lon));
             } catch (fallbackErr) {
+                if (fallbackErr?.name === 'AbortError') return [];
                 return [];
             }
         }

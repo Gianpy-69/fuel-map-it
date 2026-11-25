@@ -401,16 +401,92 @@ const App = {
         const searchInput = document.getElementById('searchInput');
         const btnClear = document.getElementById('btnClearSearch');
         const suggestionsWrap = document.getElementById('searchSuggestions');
+        const searchBar = searchInput?.closest('.search-bar');
 
         if (searchInput && btnClear && suggestionsWrap) {
             let currentSuggestions = [];
+            let activeSuggestionIndex = -1;
+            let suggestionsRequestId = 0;
+            let suggestionsController = null;
+
+            const cancelPendingSuggestions = () => {
+                clearTimeout(this.searchDebounceTimer);
+                this.searchDebounceTimer = null;
+                suggestionsRequestId++;
+
+                if (suggestionsController) {
+                    suggestionsController.abort();
+                    suggestionsController = null;
+                }
+
+                return suggestionsRequestId;
+            };
 
             const hideSuggestions = () => {
                 suggestionsWrap.classList.add('hidden');
+                searchBar?.classList.remove('has-suggestions');
+                searchInput.setAttribute('aria-expanded', 'false');
+                searchInput.removeAttribute('aria-activedescendant');
+                currentSuggestions = [];
+                activeSuggestionIndex = -1;
                 suggestionsWrap.innerHTML = '';
             };
 
+            const showSuggestions = () => {
+                suggestionsWrap.classList.remove('hidden');
+                searchBar?.classList.add('has-suggestions');
+                searchInput.setAttribute('aria-expanded', 'true');
+            };
+
+            const getSuggestionIcon = (kind) => {
+                if (kind === 'Città') {
+                    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14M2 21h20M8 10h1m6 0h1M8 14h1m6 0h1M10 21v-4h4v4"/></svg>';
+                }
+                if (kind === 'Via') {
+                    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3-4 18m12-18 4 18M12 3v3m0 4v4m0 4v3"/></svg>';
+                }
+                return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>';
+            };
+
+            const renderEmptyState = (message, icon = '⌕') => {
+                suggestionsWrap.innerHTML = `
+                    <div class="suggestion-state" role="status" aria-live="polite">
+                        <span class="suggestion-state-icon" aria-hidden="true">${icon}</span>
+                        <span>${this.escapeHtml(message)}</span>
+                    </div>
+                `;
+                showSuggestions();
+            };
+
+            const renderSuggestions = () => {
+                suggestionsWrap.innerHTML = currentSuggestions.map((item, index) => `
+                    <div id="search-suggestion-${index}" class="suggestion-item" role="option" aria-selected="false" data-index="${index}">
+                        <span class="suggestion-icon">${getSuggestionIcon(item.kind)}</span>
+                        <span class="suggestion-content">
+                            <span class="suggestion-title">${this.escapeHtml(item.title)}</span>
+                            <span class="suggestion-subtitle">${this.escapeHtml(item.subtitle)}</span>
+                        </span>
+                    </div>
+                `).join('');
+                showSuggestions();
+            };
+
+            const setActiveSuggestion = (index) => {
+                if (!currentSuggestions.length) return;
+
+                activeSuggestionIndex = index;
+                suggestionsWrap.querySelectorAll('.suggestion-item').forEach((element, itemIndex) => {
+                    const isActive = itemIndex === activeSuggestionIndex;
+                    element.classList.toggle('active', isActive);
+                    element.setAttribute('aria-selected', String(isActive));
+                });
+
+                searchInput.setAttribute('aria-activedescendant', `search-suggestion-${activeSuggestionIndex}`);
+                suggestionsWrap.querySelector('.suggestion-item.active')?.scrollIntoView({ block: 'nearest' });
+            };
+
             const selectSuggestion = (item) => {
+                cancelPendingSuggestions();
                 hideSuggestions();
                 const fullText = item.title + (item.subtitle ? `, ${item.subtitle}` : '');
                 searchInput.value = fullText;
@@ -425,75 +501,108 @@ const App = {
                 DynamicIsland.showStatus(`Arrivato a ${item.title}`, '📍', 3000);
             };
 
+            suggestionsWrap.addEventListener('click', (event) => {
+                const row = event.target.closest('.suggestion-item');
+                if (!row) return;
+
+                const index = Number.parseInt(row.dataset.index, 10);
+                if (currentSuggestions[index]) {
+                    selectSuggestion(currentSuggestions[index]);
+                }
+            });
+
             searchInput.addEventListener('input', (e) => {
                 const val = e.target.value.trim();
                 btnClear.classList.toggle('hidden', val.length === 0);
-
-                clearTimeout(this.searchDebounceTimer);
+                this.activeFilters.q = '';
+                const requestId = cancelPendingSuggestions();
+                currentSuggestions = [];
+                activeSuggestionIndex = -1;
+                searchInput.removeAttribute('aria-activedescendant');
 
                 if (val.length < 2) {
                     hideSuggestions();
-                    this.activeFilters.q = '';
-                    this.loadDistributori(this.currentLat, this.currentLon);
+                    if (!val) this.loadDistributori(this.currentLat, this.currentLon);
                     return;
                 }
 
-                // Debounce 250ms per caricare suggerimenti di vie/città
+                renderEmptyState('Cerco luoghi…', '');
+
+                // Debounce e annulla le richieste precedenti per non mostrare risultati fuori ordine.
                 this.searchDebounceTimer = setTimeout(async () => {
+                    const controller = typeof AbortController === 'function'
+                        ? new AbortController()
+                        : null;
+                    suggestionsController = controller;
+
                     try {
-                        const suggestions = await API.getSearchSuggestions(val);
+                        const suggestions = await API.getSearchSuggestions(val, {
+                            signal: controller?.signal
+                        });
+                        if (requestId !== suggestionsRequestId || val !== searchInput.value.trim()) return;
+
                         currentSuggestions = suggestions;
 
                         if (!suggestions || suggestions.length === 0) {
-                            hideSuggestions();
-                            this.activeFilters.q = val;
-                            this.loadDistributori(this.currentLat, this.currentLon);
+                            renderEmptyState('Nessun risultato. Premi Invio per cercare comunque.');
                             return;
                         }
 
-                        suggestionsWrap.innerHTML = suggestions.map((item, idx) => `
-                            <div class="suggestion-item" data-index="${idx}">
-                                <span class="suggestion-icon">${item.icon || '📍'}</span>
-                                <div class="suggestion-content">
-                                    <span class="suggestion-title">${this.escapeHtml(item.title)}</span>
-                                    <span class="suggestion-subtitle">${this.escapeHtml(item.subtitle)}</span>
-                                </div>
-                            </div>
-                        `).join('');
-
-                        suggestionsWrap.classList.remove('hidden');
-
-                        suggestionsWrap.querySelectorAll('.suggestion-item').forEach(el => {
-                            el.addEventListener('click', (ev) => {
-                                ev.stopPropagation();
-                                const index = parseInt(el.getAttribute('data-index'), 10);
-                                if (currentSuggestions[index]) {
-                                    selectSuggestion(currentSuggestions[index]);
-                                }
-                            });
-                        });
+                        renderSuggestions();
                     } catch (err) {
+                        if (err?.name === 'AbortError' || requestId !== suggestionsRequestId) return;
                         console.warn('Errore recupero suggerimenti:', err);
-                        hideSuggestions();
+                        renderEmptyState('Suggerimenti non disponibili. Premi Invio per cercare.');
+                    } finally {
+                        if (suggestionsController === controller) suggestionsController = null;
                     }
-                }, 250);
+                }, 300);
             });
 
             // Invio su input ricerca (Enter)
             searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'ArrowDown' && currentSuggestions.length) {
+                    e.preventDefault();
+                    const nextIndex = activeSuggestionIndex < 0
+                        ? 0
+                        : (activeSuggestionIndex + 1) % currentSuggestions.length;
+                    setActiveSuggestion(nextIndex);
+                    return;
+                }
+
+                if (e.key === 'ArrowUp' && currentSuggestions.length) {
+                    e.preventDefault();
+                    const previousIndex = activeSuggestionIndex < 0
+                        ? currentSuggestions.length - 1
+                        : (activeSuggestionIndex - 1 + currentSuggestions.length) % currentSuggestions.length;
+                    setActiveSuggestion(previousIndex);
+                    return;
+                }
+
+                if (e.key === 'Escape') {
+                    cancelPendingSuggestions();
+                    hideSuggestions();
+                    return;
+                }
+
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    if (currentSuggestions.length > 0) {
-                        selectSuggestion(currentSuggestions[0]);
+                    const selectedSuggestion = currentSuggestions[activeSuggestionIndex] || currentSuggestions[0];
+                    if (selectedSuggestion) {
+                        selectSuggestion(selectedSuggestion);
                     } else if (searchInput.value.trim().length > 0) {
+                        const submittedQuery = searchInput.value.trim();
+                        cancelPendingSuggestions();
                         hideSuggestions();
-                        API.geocode(searchInput.value.trim()).then(loc => {
+                        API.geocode(submittedQuery).then(loc => {
+                            if (searchInput.value.trim() !== submittedQuery) return;
                             this.currentLat = loc.lat;
                             this.currentLon = loc.lon;
                             FuelMap.flyTo(loc.lat, loc.lon, 14);
                             this.loadDistributori(loc.lat, loc.lon);
                             DynamicIsland.showStatus(`Arrivato a ${loc.nome}`, '📍', 3000);
                         }).catch(() => {
+                            if (searchInput.value.trim() !== submittedQuery) return;
                             this.activeFilters.q = searchInput.value.trim();
                             this.loadDistributori(this.currentLat, this.currentLon);
                         });
@@ -504,11 +613,13 @@ const App = {
             // Chiudi suggerimenti cliccando altrove
             document.addEventListener('click', (e) => {
                 if (!e.target.closest('.search-bar')) {
+                    cancelPendingSuggestions();
                     hideSuggestions();
                 }
             });
 
             btnClear.addEventListener('click', () => {
+                cancelPendingSuggestions();
                 searchInput.value = '';
                 btnClear.classList.add('hidden');
                 hideSuggestions();

@@ -76,18 +76,20 @@ body.dark-theme #map {
 
 .search-suggestions {
     position: absolute;
-    top: 54px;
+    top: 48px;
     left: 0;
     right: 0;
     background: #FFFFFF;
-    border-radius: var(--radius);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+    border-radius: 0 0 24px 24px;
+    box-shadow: 0 6px 18px rgba(60, 64, 67, 0.24);
     overflow: hidden;
     z-index: 1200;
-    max-height: 290px;
+    max-height: min(54vh, 420px);
     overflow-y: auto;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    animation: fadeInDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    border: 1px solid #E8EAED;
+    border-top: 1px solid #F1F3F4;
+    animation: fadeInDown 0.16s ease-out;
+    overscroll-behavior: contain;
 }
 
 @keyframes fadeInDown {
@@ -104,22 +106,30 @@ body.dark-theme #map {
 body.dark-theme .search-suggestions {
     background: #1E293B;
     border-color: rgba(255, 255, 255, 0.12);
-    box-shadow: 0 14px 35px rgba(0, 0, 0, 0.7);
+    border-top-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.52);
+}
+
+.search-bar.has-suggestions .search-inner {
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 2px 8px rgba(60, 64, 67, 0.24);
 }
 
 .suggestion-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 11px 14px;
+    gap: 16px;
+    min-height: 62px;
+    padding: 8px 16px;
     cursor: pointer;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-    transition: background 0.15s ease;
+    border-bottom: 1px solid #F1F3F4;
+    transition: background 0.12s ease;
     user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 body.dark-theme .suggestion-item {
-    border-bottom-color: rgba(255, 255, 255, 0.06);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
 }
 
 .suggestion-item:last-child {
@@ -127,20 +137,42 @@ body.dark-theme .suggestion-item {
 }
 
 .suggestion-item:hover,
-.suggestion-item:active {
-    background: #F1F5F9;
+.suggestion-item:active,
+.suggestion-item.active {
+    background: #F8F9FA;
 }
 
 body.dark-theme .suggestion-item:hover,
-body.dark-theme .suggestion-item:active {
+body.dark-theme .suggestion-item:active,
+body.dark-theme .suggestion-item.active {
     background: #334155;
 }
 
 .suggestion-icon {
-    font-size: 18px;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
-    width: 26px;
-    text-align: center;
+    background: #F1F3F4;
+    color: #5F6368;
+}
+
+body.dark-theme .suggestion-icon {
+    background: #334155;
+    color: #CBD5E1;
+}
+
+.suggestion-icon svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .suggestion-content {
@@ -151,8 +183,8 @@ body.dark-theme .suggestion-item:active {
 }
 
 .suggestion-title {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 500;
     color: var(--text);
     white-space: nowrap;
     overflow: hidden;
@@ -165,11 +197,54 @@ body.dark-theme .suggestion-title {
 
 .suggestion-subtitle {
     font-size: 12px;
-    color: var(--text-sec);
+    line-height: 17px;
+    color: #70757A;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-top: 1px;
+    margin-top: 2px;
+}
+
+body.dark-theme .suggestion-subtitle {
+    color: #AAB4C0;
+}
+
+.suggestion-state {
+    min-height: 56px;
+    padding: 12px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: #70757A;
+    font-size: 13px;
+}
+
+body.dark-theme .suggestion-state {
+    color: #AAB4C0;
+}
+
+.suggestion-state-icon {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 17px;
+    color: #5F6368;
+}
+
+.suggestion-state-icon:empty {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #DADCE0;
+    border-top-color: #4285F4;
+    border-radius: 50%;
+    animation: suggestionSpin 0.75s linear infinite;
+}
+
+@keyframes suggestionSpin {
+    to { transform: rotate(360deg); }
 }
 
 .search-inner {
@@ -180,8 +255,13 @@ body.dark-theme .suggestion-title {
     padding: 0 14px;
     height: 48px;
     background: white;
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
+    border-radius: 24px;
+    box-shadow: 0 1px 6px rgba(60, 64, 67, 0.28);
+    transition: border-radius 0.12s ease, box-shadow 0.12s ease;
+}
+
+.search-inner:focus-within {
+    box-shadow: 0 2px 8px rgba(60, 64, 67, 0.28);
 }
 
 .search-icon {
@@ -212,9 +292,18 @@ body.dark-theme .suggestion-title {
     cursor: pointer;
     font-size: 14px;
     padding: 4px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.btn-clear-search:hover,
+.btn-clear-search:focus-visible {
+    background: #F1F3F4;
+    outline: none;
 }
 
 .btn-clear-search.hidden {
