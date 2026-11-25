@@ -1257,7 +1257,11 @@ const App = {
             const mins = (route.duration / 60).toFixed(0);
 
             // 6. Calcolo Pit-Stop Planner: progressione e finestra di sosta sicura
-            const { cumDist } = this.calculateStationRouteProgress(route.geometry.coordinates, stations);
+            const { cumDist } = this.calculateStationRouteProgress(
+                route.geometry.coordinates,
+                stations,
+                distTotKm
+            );
             const routePlan = carburante === 'tutte'
                 ? {
                     pitStops: [],
@@ -1396,11 +1400,11 @@ const App = {
     planRoutePitStops(stations, autonomyKm, totalDistanceKm, fuel) {
         const safeWindowEndKm = Math.min(
             autonomyKm * 0.9,
-            Math.max(30, autonomyKm - 10)
+            autonomyKm - Math.max(5, autonomyKm * 0.05)
         );
         const safeWindowStartKm = Math.max(
             0,
-            Math.min(safeWindowEndKm - 30, autonomyKm * 0.65)
+            safeWindowEndKm - Math.max(5, autonomyKm * 0.1)
         );
         const pitStops = [];
         const safeWindows = [];
@@ -1417,21 +1421,18 @@ const App = {
             return Number.isFinite(price) && price > 0 ? price : Infinity;
         };
 
-        const estimatedRemainingStops = (station) => {
-            const remainingKm = Math.max(0, totalDistanceKm - station.progressioneKm);
-            return Math.max(0, Math.ceil(remainingKm / autonomyKm) - 1);
-        };
-
         const compareCandidates = (first, second) => {
-            const remainingStopsDifference =
-                estimatedRemainingStops(first) - estimatedRemainingStops(second);
-            if (remainingStopsDifference !== 0) return remainingStopsDifference;
-
             const firstPrice = stationPrice(first);
             const secondPrice = stationPrice(second);
+            const progressDifference = second.progressioneKm - first.progressioneKm;
+            const priceToleranceKm = Math.min(3, autonomyKm * 0.05);
+
+            if (Math.abs(progressDifference) > priceToleranceKm) {
+                return progressDifference;
+            }
             if (firstPrice !== secondPrice) return firstPrice - secondPrice;
 
-            return second.progressioneKm - first.progressioneKm;
+            return progressDifference;
         };
 
         for (let index = 0; index < maxIterations; index++) {
@@ -1493,13 +1494,26 @@ const App = {
     },
 
     // Calcola la progressione chilometrica di ogni distributore rispetto al tracciato
-    calculateStationRouteProgress(routeCoordinates, stations) {
+    calculateStationRouteProgress(routeCoordinates, stations, totalRouteDistanceKm = null) {
         const cumDist = [0];
         for (let i = 1; i < routeCoordinates.length; i++) {
             const p1 = routeCoordinates[i - 1];
             const p2 = routeCoordinates[i];
             const segDist = this.haversineMeters(p1[1], p1[0], p2[1], p2[0]);
             cumDist.push(cumDist[i - 1] + segDist);
+        }
+
+        const geometricDistanceM = cumDist[cumDist.length - 1];
+        const expectedDistanceM = Number(totalRouteDistanceKm) * 1000;
+        if (
+            Number.isFinite(expectedDistanceM) &&
+            expectedDistanceM > 0 &&
+            geometricDistanceM > 0
+        ) {
+            const distanceScale = expectedDistanceM / geometricDistanceM;
+            for (let index = 1; index < cumDist.length; index++) {
+                cumDist[index] *= distanceScale;
+            }
         }
 
         stations.forEach(d => {
@@ -1513,6 +1527,17 @@ const App = {
                     minDist = dist;
                     bestIdx = i;
                 }
+            }
+            const lastIndex = routeCoordinates.length - 1;
+            if (lastIndex % step !== 0) {
+                const lastPoint = routeCoordinates[lastIndex];
+                const lastPointDist = this.haversineMeters(
+                    d.lat,
+                    d.lon,
+                    lastPoint[1],
+                    lastPoint[0]
+                );
+                if (lastPointDist < minDist) bestIdx = lastIndex;
             }
             d.progressioneKm = cumDist[bestIdx] / 1000;
         });
