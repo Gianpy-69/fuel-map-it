@@ -1,15 +1,19 @@
 // ============================================
 // Service Worker — PWA Cache & Offline Shell
 // ============================================
-const CACHE_NAME = 'fuelmap-v21';
+const CACHE_NAME = 'fuelmap-v22';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
+    '/404.html',
+    '/privacy.html',
     '/css/style.css',
     '/js/api.js',
     '/js/map.js',
     '/js/app.js',
     '/icon.svg',
+    '/icon-192.png',
+    '/icon-512.png',
     '/manifest.json',
     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
@@ -19,11 +23,13 @@ const STATIC_ASSETS = [
     'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
 ];
 
-// Install: salva asset statici in cache
+// Install: salva asset statici in cache (tollerante ad errori singoli su CDN)
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(STATIC_ASSETS);
+            return Promise.allSettled(
+                STATIC_ASSETS.map((url) => cache.add(url))
+            );
         })
     );
     self.skipWaiting();
@@ -50,11 +56,12 @@ self.addEventListener('fetch', (event) => {
 
     const url = new URL(event.request.url);
 
-    // Le chiamate API e backend cloud vanno sempre via rete (dati in tempo reale)
-    if (url.pathname.startsWith('/api/') || url.hostname.includes('onrender.com') || url.hostname.includes('supabase.co')) {
+    // Le chiamate API e Supabase vanno sempre via rete (fallback offline gestito in IndexedDB)
+    if (url.pathname.startsWith('/api/') || url.hostname.includes('supabase.co')) {
         event.respondWith(
             fetch(event.request).catch(() => {
                 return new Response(JSON.stringify({ errore: 'Offline - impossibile caricare dati' }), {
+                    status: 503,
                     headers: { 'Content-Type': 'application/json' }
                 });
             })

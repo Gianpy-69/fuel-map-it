@@ -166,6 +166,7 @@ const App = {
         this.initNotifications();
         this.loadFavorites();
         this.updateFavoritesBadge();
+        this.initOnboarding();
 
         // Caricamento preferenza carburante predefinito
         const savedFuel = localStorage.getItem('fuelmap_default_fuel');
@@ -179,6 +180,17 @@ const App = {
                 console.warn('Service Worker non registrato:', err);
             });
         }
+
+        // Notifiche stato rete (Offline / Online)
+        window.addEventListener('offline', () => {
+            DynamicIsland.showStatus('Sei offline — uso dati in cache', '📡', 4000);
+        });
+        window.addEventListener('online', () => {
+            DynamicIsland.showStatus('Connessione ripristinata', '🌐', 3000);
+            if (this.currentLat && this.currentLon) {
+                this.loadDistributori(this.currentLat, this.currentLon);
+            }
+        });
     },
 
     bindEvents() {
@@ -272,6 +284,32 @@ const App = {
             if (btnCloseFeedback && feedbackModal) {
                 btnCloseFeedback.addEventListener('click', () => {
                     feedbackModal.classList.add('hidden');
+                });
+            }
+
+            // Tasto Chi Siamo / About nel Pannello Strumenti
+            const btnToolAbout = document.getElementById('btnToolAbout');
+            const aboutModal = document.getElementById('aboutModalCard');
+            const btnCloseAbout = document.getElementById('btnCloseAbout');
+
+            if (btnToolAbout && aboutModal) {
+                btnToolAbout.addEventListener('click', () => {
+                    toolsModal.classList.add('hidden');
+                    aboutModal.classList.remove('hidden');
+                });
+            }
+
+            if (btnCloseAbout && aboutModal) {
+                btnCloseAbout.addEventListener('click', () => {
+                    aboutModal.classList.add('hidden');
+                });
+            }
+
+            const btnReplayTutorial = document.getElementById('btnReplayTutorial');
+            if (btnReplayTutorial && aboutModal) {
+                btnReplayTutorial.addEventListener('click', () => {
+                    aboutModal.classList.add('hidden');
+                    this.openOnboarding(true);
                 });
             }
 
@@ -1015,7 +1053,11 @@ const App = {
             this.checkProximityPriceDeals(stations);
 
             const n = stations.length;
-            this.updatePill(`${n} distribut${n === 1 ? 'ore' : 'ori'} nell'area visibile`, false);
+            if (data?.offline) {
+                this.updatePill(`📡 Offline — ${n} distribut${n === 1 ? 'ore' : 'ori'} in cache`, false);
+            } else {
+                this.updatePill(`${n} distribut${n === 1 ? 'ore' : 'ori'} nell'area visibile`, false);
+            }
             
             setTimeout(() => {
                 const statusPill = document.getElementById('statusPill');
@@ -1911,6 +1953,103 @@ const App = {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
+    },
+
+    // --- Onboarding Tutorial Primo Avvio ---
+    onboardingSlides: [
+        {
+            icon: '⛽',
+            title: 'Prezzi Ufficiali in Tempo Reale',
+            desc: 'Esplora oltre 23.800 distributori in tutta Italia con prezzi certificati MIMIT aggiornati ogni mattina alle 08:35.'
+        },
+        {
+            icon: '🚗',
+            title: 'Pit-Stop Planner & Radar Prezzi',
+            desc: 'Pianifica le soste più economiche lungo i tuoi viaggi (A ➔ B) e attiva il Radar per ricevere un avviso vicino alle pompe top.'
+        },
+        {
+            icon: '📈',
+            title: 'Storico 7 Giorni & Risparmio',
+            desc: 'Controlla il grafico settimanale di ogni stazione, calcola quanto risparmi sul pieno e salva i tuoi distributori preferiti.'
+        },
+        {
+            icon: '👥',
+            title: 'Segnalazioni della Community',
+            desc: 'Aiuta gli altri automobilisti segnalando code, chiusure o allegando foto dal vivo — zero registrazioni richieste!'
+        }
+    ],
+    onboardingStep: 0,
+
+    initOnboarding() {
+        const overlay = document.getElementById('onboardingOverlay');
+        const btnNext = document.getElementById('btnNextOnboarding');
+        const btnPrev = document.getElementById('btnPrevOnboarding');
+        const btnSkip = document.getElementById('btnSkipOnboarding');
+        if (!overlay || !btnNext || !btnPrev || !btnSkip) return;
+
+        btnNext.addEventListener('click', () => {
+            if (this.onboardingStep < this.onboardingSlides.length - 1) {
+                this.onboardingStep++;
+                this.renderOnboardingSlide();
+            } else {
+                this.closeOnboarding();
+            }
+        });
+
+        btnPrev.addEventListener('click', () => {
+            if (this.onboardingStep > 0) {
+                this.onboardingStep--;
+                this.renderOnboardingSlide();
+            }
+        });
+
+        btnSkip.addEventListener('click', () => this.closeOnboarding());
+
+        if (localStorage.getItem('fuelmap_onboarding_done') !== 'true') {
+            this.openOnboarding(false);
+        }
+    },
+
+    openOnboarding(forceReplay = false) {
+        const overlay = document.getElementById('onboardingOverlay');
+        if (!overlay) return;
+        this.onboardingStep = 0;
+        this.renderOnboardingSlide();
+        overlay.classList.remove('hidden');
+        if (forceReplay) {
+            localStorage.setItem('fuelmap_onboarding_done', 'true');
+        }
+    },
+
+    renderOnboardingSlide() {
+        const slide = this.onboardingSlides[this.onboardingStep];
+        const iconEl = document.getElementById('onboardingIcon');
+        const titleEl = document.getElementById('onboardingTitle');
+        const descEl = document.getElementById('onboardingDesc');
+        const dotsEl = document.getElementById('onboardingDots');
+        const btnPrev = document.getElementById('btnPrevOnboarding');
+        const btnNext = document.getElementById('btnNextOnboarding');
+
+        if (iconEl) iconEl.textContent = slide.icon;
+        if (titleEl) titleEl.textContent = slide.title;
+        if (descEl) descEl.textContent = slide.desc;
+
+        if (dotsEl) {
+            dotsEl.innerHTML = this.onboardingSlides
+                .map((_, idx) => `<span class="onboarding-dot ${idx === this.onboardingStep ? 'active' : ''}"></span>`)
+                .join('');
+        }
+
+        if (btnPrev) btnPrev.classList.toggle('hidden', this.onboardingStep === 0);
+        if (btnNext) {
+            btnNext.textContent = this.onboardingStep === this.onboardingSlides.length - 1 ? 'Inizia! 🚀' : 'Avanti ➔';
+        }
+    },
+
+    closeOnboarding() {
+        const overlay = document.getElementById('onboardingOverlay');
+        if (overlay) overlay.classList.add('hidden');
+        localStorage.setItem('fuelmap_onboarding_done', 'true');
     },
 
     // --- Utilità ---

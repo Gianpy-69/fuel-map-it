@@ -4,12 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#FAFAFA">
-    <title>Fuel Map Italia</title>
+    <title>Fuel Map Italia — Prezzi Benzina, Diesel, GPL in Tempo Reale</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Trova i distributori di carburante più economici in Italia. Prezzi ufficiali MIMIT aggiornati ogni giorno per Benzina, Diesel, GPL e Metano. Mappa interattiva con oltre 23.800 stazioni.">
+    <meta name="keywords" content="distributori benzina, prezzi carburante, GPL, diesel, metano, MIMIT, mappa distributori Italia, risparmio carburante">
+    <meta name="author" content="Fuel Map Italia">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://fuel-map-it.onrender.com/">
+
+    <!-- Open Graph (Facebook, WhatsApp, Telegram) -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Fuel Map Italia — Prezzi Benzina in Tempo Reale">
+    <meta property="og:description" content="Mappa interattiva con prezzi ufficiali MIMIT di oltre 23.800 distributori in Italia. Trova la pompa più economica vicino a te!">
+    <meta property="og:image" content="https://fuel-map-it.onrender.com/icon-512.png">
+    <meta property="og:url" content="https://fuel-map-it.onrender.com/">
+    <meta property="og:site_name" content="Fuel Map Italia">
+    <meta property="og:locale" content="it_IT">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Fuel Map Italia — Prezzi Benzina in Tempo Reale">
+    <meta name="twitter:description" content="Trova la pompa più economica tra 23.800+ distributori in Italia. Prezzi MIMIT aggiornati ogni giorno.">
+    <meta name="twitter:image" content="https://fuel-map-it.onrender.com/icon-512.png">
 
     <!-- PWA & Mobile Meta -->
     <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
     <link rel="icon" type="image/svg+xml" href="/icon.svg">
-    <link rel="apple-touch-icon" href="/icon.svg">
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="FuelMap">
@@ -235,6 +258,16 @@
                 </div>
                 <span class="tool-arrow">➔</span>
             </button>
+
+            <!-- Chi Siamo / About -->
+            <button type="button" class="tool-item-card" id="btnToolAbout">
+                <div class="tool-icon-wrap tool-about-icon">ℹ️</div>
+                <div class="tool-text-wrap">
+                    <span class="tool-title">Chi Siamo</span>
+                    <span class="tool-sub">Informazioni sull'app e contatti</span>
+                </div>
+                <span class="tool-arrow">➔</span>
+            </button>
         </div>
 
         <div class="tools-footer-info">
@@ -262,6 +295,42 @@
             <button type="button" class="btn-submit-feedback" id="btnSubmitFeedback">
                 <span>Invia Messaggio</span>
             </button>
+        </div>
+    </div>
+
+    <!-- Modal Chi Siamo / About -->
+    <div class="route-modal-card hidden" id="aboutModalCard">
+        <div class="route-modal-header">
+            <div class="route-title-wrap">
+                <span class="route-badge-icon">ℹ️</span>
+                <h3>Chi Siamo</h3>
+            </div>
+            <button type="button" class="btn-close-route" id="btnCloseAbout">✕</button>
+        </div>
+        <div class="about-modal-body">
+            <div class="about-logo-section">
+                <img src="/icon-192.png" alt="Fuel Map Italia" class="about-logo" width="80" height="80">
+                <h2 class="about-app-name">Fuel Map Italia</h2>
+                <span class="about-version">Versione 1.0.0</span>
+            </div>
+            <div class="about-desc">
+                <p>Fuel Map Italia è un'app 100% gratuita e indipendente che mostra in tempo reale i prezzi dei carburanti di oltre <strong>23.800 distributori</strong> su tutto il territorio nazionale.</p>
+                <p>I dati provengono dall'anagrafica ufficiale del <strong>Ministero delle Imprese e del Made in Italy (MIMIT)</strong> e vengono aggiornati quotidianamente.</p>
+            </div>
+            <div class="about-features">
+                <div class="about-feature-item">⛽ Prezzi ufficiali MIMIT aggiornati ogni giorno</div>
+                <div class="about-feature-item">📈 Storico prezzi 7 giorni per ogni stazione</div>
+                <div class="about-feature-item">🚗 Pit-Stop Planner lungo i tuoi viaggi</div>
+                <div class="about-feature-item">🔔 Radar notifiche di prossimità</div>
+                <div class="about-feature-item">💰 Calcolatore risparmio su pieno</div>
+                <div class="about-feature-item">👥 Segnalazioni crowdsourced dalla community</div>
+            </div>
+            <div class="about-links">
+                <a href="/privacy.html" target="_blank" class="about-link">🔒 Privacy</a>
+                <a href="mailto:gianpidandrea@gmail.com" class="about-link">📧 Contatti</a>
+                <button type="button" id="btnReplayTutorial" class="about-link about-link-btn">📖 Tutorial</button>
+            </div>
+            <p class="about-copyright">© 2026 Fuel Map Italia — Tutti i diritti riservati.</p>
         </div>
     </div>
 
@@ -519,6 +588,23 @@
 
         <div class="sheet-footer">
             <p class="sheet-aggiornamento" id="sheetAggiornamento">—</p>
+        </div>
+    </div>
+
+    <!-- Onboarding Tutorial Primo Avvio -->
+    <div class="onboarding-overlay hidden" id="onboardingOverlay" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle">
+        <div class="onboarding-card">
+            <button type="button" class="onboarding-skip" id="btnSkipOnboarding">Salta</button>
+            <div class="onboarding-slide-content">
+                <div class="onboarding-emoji" id="onboardingIcon">⛽</div>
+                <h2 class="onboarding-title" id="onboardingTitle">Prezzi Ufficiali in Tempo Reale</h2>
+                <p class="onboarding-desc" id="onboardingDesc">Esplora oltre 23.800 distributori in tutta Italia con prezzi certificati MIMIT aggiornati ogni mattina.</p>
+            </div>
+            <div class="onboarding-dots" id="onboardingDots"></div>
+            <div class="onboarding-actions">
+                <button type="button" class="onboarding-btn-prev hidden" id="btnPrevOnboarding">Indietro</button>
+                <button type="button" class="onboarding-btn-next" id="btnNextOnboarding">Avanti ➔</button>
+            </div>
         </div>
     </div>
 

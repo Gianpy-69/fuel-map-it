@@ -4,6 +4,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const path = require('path');
 require('dotenv').config();
 
@@ -79,6 +80,9 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Compressione gzip/brotli per ridurre il traffico (~60-80% in meno)
+app.use(compression({ threshold: 1024 }));
+
 // File statici (frontend)
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -89,6 +93,16 @@ app.use('/api/segnalazioni', segnalazioniRoutes);
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// 404 per rotte API non esistenti
+app.use('/api', (req, res) => {
+    res.status(404).json({ errore: 'Endpoint non trovato' });
+});
+
+// 404 personalizzata per rotte web non esistenti
+app.use((req, res) => {
+    res.status(404).sendFile(path.join(__dirname, '..', 'public', '404.html'));
 });
 
 // Avvio server

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0066FF">
+    <title>404 — Pagina non trovata | Fuel Map Italia</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <style>
+        :root {
+            --bg: #FAFAFA;
+            --card: #FFFFFF;
+            --text: #111827;
+            --text-sec: #64748B;
+            --border: #E2E8F0;
+            --accent: #0066FF;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0F172A;
+                --card: #1E293B;
+                --text: #F8FAFC;
+                --text-sec: #94A3B8;
+                --border: #334155;
+            }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .card {
+            width: 100%;
+            max-width: 400px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 36px 28px;
+            text-align: center;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
+        }
+        .badge-404 {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 76px;
+            height: 76px;
+            border-radius: 22px;
+            background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+            font-size: 38px;
+            margin-bottom: 18px;
+        }
+        @media (prefers-color-scheme: dark) {
+            .badge-404 {
+                background: linear-gradient(135deg, #1E3A8A 0%, #1D4ED8 100%);
+            }
+        }
+        .code {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        p {
+            font-size: 14px;
+            color: var(--text-sec);
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+        .btn-home {
+            display: inline-block;
+            width: 100%;
+            padding: 14px 20px;
+            background: linear-gradient(135deg, #0066FF 0%, #0047BA 100%);
+            color: #FFFFFF;
+            text-decoration: none;
+            font-size: 15px;
+            font-weight: 700;
+            border-radius: 14px;
+            box-shadow: 0 6px 18px rgba(0, 102, 255, 0.3);
+            transition: transform 0.15s;
+        }
+        .btn-home:active {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <div class="badge-404">⛽</div>
+        <div class="code">Errore 404</div>
+        <h1>Strada sbagliata!</h1>
+        <p>La pagina che stai cercando non esiste o è stata spostata. Torna sulla mappa per trovare il distributore più economico vicino a te.</p>
+        <a href="/" class="btn-home">🗺️ Torna alla Mappa</a>
+    </main>
+</body>
+</html>

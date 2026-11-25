@@ -7,6 +7,189 @@ const isNativeApp = typeof window !== 'undefined' && (
     window.location.hostname === 'localhost' && window.location.port === ''
 );
 
+// Cache offline persistente in IndexedDB per distributori e storico prezzi
+const OfflineCache = {
+    DB_NAME: 'fuelmap_offline_db',
+    DB_VERSION: 1,
+    MAX_STATIONS: 3000,
+    _dbPromise: null,
+
+    open() {
+        if (typeof indexedDB === 'undefined') {
+            return Promise.resolve(null);
+        }
+        if (this._dbPromise) return this._dbPromise;
+
+        this._dbPromise = new Promise((resolve) => {
+            try {
+                const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('stations')) {
+                        db.createObjectStore('stations', { keyPath: 'id' });
+                    }
+                    if (!db.objectStoreNames.contains('storico')) {
+                        db.createObjectStore('storico', { keyPath: 'id' });
+                    }
+                };
+                req.onsuccess = (e) => resolve(e.target.result);
+                req.onerror = () => resolve(null);
+            } catch {
+                resolve(null);
+            }
+        });
+        return this._dbPromise;
+    },
+
+    haversineMeters(lat1, lon1, lat2, lon2) {
+        const R = 6371000;
+        const toRad = (deg) => (deg * Math.PI) / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLon = toRad(lon2 - lon1);
+        const a =
+            Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+        return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    },
+
+    async saveStations(stations) {
+        if (!Array.isArray(stations) || stations.length === 0) return;
+        const db = await this.open();
+        if (!db) return;
+
+        try {
+            const tx = db.transaction('stations', 'readwrite');
+            const store = tx.objectStore('stations');
+            const now = Date.now();
+            stations.forEach((s) => {
+                if (s && s.id !== undefined && s.id !== null) {
+                    store.put({ ...s, _cachedAt: now });
+                }
+            });
+
+            // Mantieni il numero di record entro MAX_STATIONS
+            const countReq = store.count();
+            countReq.onsuccess = () => {
+                if (countReq.result <= this.MAX_STATIONS) return;
+                const getAllReq = store.getAll();
+                getAllReq.onsuccess = () => {
+                    const all = (getAllReq.result || []).sort(
+                        (a, b) => (a._cachedAt || 0) - (b._cachedAt || 0)
+                    );
+                    const excess = all.length - this.MAX_STATIONS;
+                    for (let i = 0; i < excess; i++) {
+                        store.delete(all[i].id);
+                    }
+                };
+            };
+        } catch {
+            // Ignora errori di quota o transazione
+        }
+    },
+
+    async getNearbyStations(lat, lon, raggio = 10000, filters = {}) {
+        const db = await this.open();
+        if (!db) return { distributori: [], offline: true };
+
+        return new Promise((resolve) => {
+            try {
+                const tx = db.transaction('stations', 'readonly');
+                const store = tx.objectStore('stations');
+                const req = store.getAll();
+
+                req.onsuccess = () => {
+                    const all = req.result || [];
+                    const maxR = Math.min(Number(raggio) || 10000, 50000);
+                    const fuel = filters.carburante ? String(filters.carburante).toLowerCase() : null;
+                    const q = filters.q ? String(filters.q).trim().toLowerCase() : null;
+                    let latestCache = 0;
+
+                    const matched = [];
+                    for (const s of all) {
+                        const sLat = parseFloat(s.lat);
+                        const sLon = parseFloat(s.lon);
+                        if (!Number.isFinite(sLat) || !Number.isFinite(sLon)) continue;
+
+                        const dist = this.haversineMeters(lat, lon, sLat, sLon);
+                        if (dist > maxR) continue;
+
+                        if (filters.soloAperti && s.stato === 'chiuso') continue;
+                        if (fuel && ['benzina', 'diesel', 'gpl', 'metano'].includes(fuel)) {
+                            if (s[`${fuel}_disponibile`] === false) continue;
+                            if (s[`${fuel}_disponibile`] !== true && !s[`prezzo_${fuel}`]) continue;
+                        }
+                        if (q) {
+                            const hay = `${s.nome || ''} ${s.bandiera || ''} ${s.indirizzo || ''} ${s.comune || ''}`.toLowerCase();
+                            if (!hay.includes(q)) continue;
+                        }
+
+                        if ((s._cachedAt || 0) > latestCache) latestCache = s._cachedAt;
+                        matched.push({ ...s, distanza_m: Math.round(dist) });
+                    }
+
+                    matched.sort((a, b) => a.distanza_m - b.distanza_m);
+                    resolve({
+                        distributori: matched.slice(0, 500),
+                        offline: true,
+                        cachedAt: latestCache || null
+                    });
+                };
+
+                req.onerror = () => resolve({ distributori: [], offline: true });
+            } catch {
+                resolve({ distributori: [], offline: true });
+            }
+        });
+    },
+
+    async getStationById(id) {
+        const db = await this.open();
+        if (!db) return null;
+        return new Promise((resolve) => {
+            try {
+                const tx = db.transaction('stations', 'readonly');
+                const store = tx.objectStore('stations');
+                const numId = Number(id);
+                const req = store.get(Number.isFinite(numId) ? numId : id);
+                req.onsuccess = () => {
+                    if (req.result) return resolve({ ...req.result, offline: true });
+                    const reqStr = store.get(String(id));
+                    reqStr.onsuccess = () => resolve(reqStr.result ? { ...reqStr.result, offline: true } : null);
+                    reqStr.onerror = () => resolve(null);
+                };
+                req.onerror = () => resolve(null);
+            } catch {
+                resolve(null);
+            }
+        });
+    },
+
+    async saveStorico(id, data) {
+        if (!data) return;
+        const db = await this.open();
+        if (!db) return;
+        try {
+            const tx = db.transaction('storico', 'readwrite');
+            tx.objectStore('storico').put({ id: String(id), data, _cachedAt: Date.now() });
+        } catch {}
+    },
+
+    async getStorico(id) {
+        const db = await this.open();
+        if (!db) return null;
+        return new Promise((resolve) => {
+            try {
+                const tx = db.transaction('storico', 'readonly');
+                const req = tx.objectStore('storico').get(String(id));
+                req.onsuccess = () => resolve(req.result ? { ...req.result.data, offline: true } : null);
+                req.onerror = () => resolve(null);
+            } catch {
+                resolve(null);
+            }
+        });
+    }
+};
+
 const API = {
     baseUrl: isNativeApp ? 'https://fuel-map-it.onrender.com' : '',
 
@@ -41,43 +224,63 @@ const API = {
             `${this.baseUrl}/api/distributori/vicini?` +
             params.toString();
 
-        const response = await fetch(url);
-
-        if (!response.ok) {
-            throw new Error(
-                `Errore API: ${response.status}`
-            );
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Errore API: ${response.status}`);
+            }
+            const data = await response.json();
+            if (Array.isArray(data?.distributori)) {
+                OfflineCache.saveStations(data.distributori);
+            }
+            return data;
+        } catch (err) {
+            const cached = await OfflineCache.getNearbyStations(lat, lon, raggio, filters);
+            if (cached.distributori.length > 0) {
+                return cached;
+            }
+            throw err;
         }
-
-        return response.json();
     },
 
     async getDistributore(id) {
-        const response = await fetch(
-            `${this.baseUrl}/api/distributori/${id}`
-        );
-
-        if (!response.ok) {
-            throw new Error(
-                `Errore API: ${response.status}`
+        try {
+            const response = await fetch(
+                `${this.baseUrl}/api/distributori/${id}`
             );
+            if (!response.ok) {
+                throw new Error(`Errore API: ${response.status}`);
+            }
+            const data = await response.json();
+            if (data && data.id) {
+                OfflineCache.saveStations([data]);
+            }
+            return data;
+        } catch (err) {
+            const cached = await OfflineCache.getStationById(id);
+            if (cached) return cached;
+            throw err;
         }
-
-        return response.json();
     },
 
     async getStoricoDistributore(id) {
-        const response = await fetch(
-            `${this.baseUrl}/api/distributori/${id}/storico`
-        );
-
-        if (!response.ok) {
-            throw new Error(
-                `Errore API: ${response.status}`
+        try {
+            const response = await fetch(
+                `${this.baseUrl}/api/distributori/${id}/storico`
             );
+            if (!response.ok) {
+                throw new Error(`Errore API: ${response.status}`);
+            }
+            const data = await response.json();
+            if (data) {
+                OfflineCache.saveStorico(id, data);
+            }
+            return data;
+        } catch (err) {
+            const cached = await OfflineCache.getStorico(id);
+            if (cached) return cached;
+            throw err;
         }
-
-        return response.json();
     },
 
     async getDistributoriSuPercorso(
