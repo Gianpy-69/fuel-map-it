@@ -440,7 +440,7 @@ const API = {
                         lat: parseFloat(item.lat),
                         lon: parseFloat(item.lon)
                     };
-                }).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lon));
+                }).filter(item => Number.isFinite(item.lat) && Number.isFinite(item.lon)));
             } catch (fallbackErr) {
                 if (fallbackErr?.name === 'AbortError') return [];
                 return [];
