@@ -528,7 +528,7 @@ const API = {
             .join(';');
 
         const params = new URLSearchParams({
-            overview: 'full',
+            overview: 'simplified',
             geometries: 'geojson',
             alternatives: 'false',
             steps: 'false'

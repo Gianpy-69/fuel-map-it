@@ -1222,26 +1222,32 @@ const App = {
         }
 
         btnCalc.disabled = true;
-        btnCalc.innerHTML = '<span>⏳ Calcolo rotta e prezzi...</span>';
+        btnCalc.innerHTML = '<span>⏳ Calcolo il percorso...</span>';
 
         try {
-            // 1. Coordinate di partenza
-            let startCoord = null;
+            // Risolvi partenza e destinazione in parallelo quando servono i geocoder.
             const selectedStartLocation = getSelectedLocation(startInput, startVal);
+            let startCoordPromise;
             if (startVal.toLowerCase().includes('posizione') && FuelMap.userLat && FuelMap.userLon) {
-                startCoord = { lat: FuelMap.userLat, lon: FuelMap.userLon, nome: 'La mia posizione' };
+                startCoordPromise = Promise.resolve({ lat: FuelMap.userLat, lon: FuelMap.userLon, nome: 'La mia posizione' });
             } else if (selectedStartLocation) {
-                startCoord = selectedStartLocation;
+                startCoordPromise = Promise.resolve(selectedStartLocation);
             } else if (startVal) {
-                startCoord = await API.geocode(startVal);
+                startCoordPromise = API.geocode(startVal);
             } else if (FuelMap.userLat && FuelMap.userLon) {
-                startCoord = { lat: FuelMap.userLat, lon: FuelMap.userLon, nome: 'La mia posizione' };
+                startCoordPromise = Promise.resolve({ lat: FuelMap.userLat, lon: FuelMap.userLon, nome: 'La mia posizione' });
             } else {
-                startCoord = { lat: this.currentLat, lon: this.currentLon, nome: 'Roma' };
+                startCoordPromise = Promise.resolve({ lat: this.currentLat, lon: this.currentLon, nome: 'Roma' });
             }
 
-            // 2. Coordinate di arrivo
-            const destCoord = getSelectedLocation(destInput, destVal) || await API.geocode(destVal);
+            const selectedDestination = getSelectedLocation(destInput, destVal);
+            const destinationPromise = selectedDestination
+                ? Promise.resolve(selectedDestination)
+                : API.geocode(destVal);
+            const [startCoord, destCoord] = await Promise.all([
+                startCoordPromise,
+                destinationPromise
+            ]);
 
             // Salva coordinate correnti per waypoint Google Maps
             this.currentRouteStart = startCoord;
@@ -1254,6 +1260,7 @@ const App = {
             FuelMap.drawRoute(route.geometry);
 
             // 5. Cerca distributori lungo il buffer del tracciato secondo la preferenza (Autostrada / Risparmio)
+            btnCalc.innerHTML = '<span>⛽ Cerco le pompe lungo la tratta...</span>';
             const fuelRes = await API.getDistributoriSuPercorso(
                 route.geometry,
                 carburante,
@@ -1544,18 +1551,25 @@ const App = {
 
         const geometricDistanceM = cumDist[cumDist.length - 1];
         const expectedDistanceM = Number(totalRouteDistanceKm) * 1000;
+        let distanceScale = 1;
         if (
             Number.isFinite(expectedDistanceM) &&
             expectedDistanceM > 0 &&
             geometricDistanceM > 0
         ) {
-            const distanceScale = expectedDistanceM / geometricDistanceM;
+            distanceScale = expectedDistanceM / geometricDistanceM;
             for (let index = 1; index < cumDist.length; index++) {
                 cumDist[index] *= distanceScale;
             }
         }
 
         stations.forEach(d => {
+            const routeProgressM = Number(d.progress_m);
+            if (Number.isFinite(routeProgressM) && routeProgressM >= 0) {
+                d.progressioneKm = (routeProgressM * distanceScale) / 1000;
+                return;
+            }
+
             let minDist = Infinity;
             let bestIdx = 0;
             const step = routeCoordinates.length > 3000 ? 2 : 1;
