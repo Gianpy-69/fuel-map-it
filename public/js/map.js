@@ -44,6 +44,7 @@ const FuelMap = {
         this.map = L.map('map', {
             zoomControl: false,
             attributionControl: true,
+            maxZoom: 19,
             layers: [this.streetLayer]
         }).setView([41.9028, 12.4964], 13);
 
