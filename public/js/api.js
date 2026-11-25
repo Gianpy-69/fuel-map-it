@@ -255,7 +255,7 @@ const API = {
             ? new AbortController()
             : null;
         const timeoutId = controller
-            ? setTimeout(() => controller.abort(), 20000)
+            ? setTimeout(() => controller.abort(), 75000)
             : null;
 
         try {

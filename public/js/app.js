@@ -1180,7 +1180,11 @@ const App = {
 
         } catch (err) {
             console.error('Errore caricamento:', err);
-            this.updatePill('Errore nel caricamento');
+            this.updatePill(
+                err?.name === 'AbortError'
+                    ? 'Il server impiega più tempo del previsto. Riprova tra poco.'
+                    : 'Errore nel caricamento'
+            );
         }
     },
 
