@@ -328,14 +328,16 @@ const API = {
         geojson,
         carburante = 'benzina',
         preferenza = 'tutte',
-        autonomiaKm = 250
+        autonomiaKm = 250,
+        includiChiusi = false
     ) {
         const payload = {
             geojson,
             carburante,
             preferenza,
             autonomia_km: autonomiaKm,
-            buffer_m: 2500
+            buffer_m: 2500,
+            includi_chiusi: includiChiusi
         };
 
         const response = await fetch(

@@ -103,10 +103,11 @@ const DynamicIsland = {
         });
     },
 
-    showPitStop(station, kmProgress) {
+    showPitStop(station, kmProgress, totalStops = 1) {
+        const stopNumber = station.pitStopNumber || 1;
         this.show({
             icon: '🎯',
-            title: `Sosta tra ${Math.round(kmProgress)} km`,
+            title: `Sosta ${stopNumber}/${totalStops} • km ${Math.round(kmProgress)}`,
             subtitle: station.bandiera || station.nome || 'Rifornimento sicuro',
             badge: station.prezzo_benzina ? `€ ${parseFloat(station.prezzo_benzina).toFixed(3)}` : 'TAPPA',
             type: 'pitstop',
@@ -143,6 +144,7 @@ const App = {
     isRouteModeActive: false,
     currentRouteStart: null,
     currentRouteDest: null,
+    currentPitStops: [],
     isRadarActive: false,
     radarWatchId: null,
     lastGlobalNotificationTime: 0,
@@ -167,6 +169,65 @@ const App = {
     },
     searchDebounceTimer: null,
     moveDebounceTimer: null,
+
+    syncFilterControls({ syncRouteFuel = false } = {}) {
+        const fuel = this.activeFilters.carburante || 'tutte';
+        const fuelLabels = {
+            tutte: { text: 'Tutti', dot: '✨' },
+            benzina: { text: 'Benzina', dot: '🟢' },
+            diesel: { text: 'Diesel', dot: '⚫' },
+            gpl: { text: 'GPL', dot: '💧' },
+            metano: { text: 'Metano', dot: '💨' }
+        };
+        const fuelConfig = fuelLabels[fuel] || fuelLabels.tutte;
+        const fuelMenu = document.getElementById('fuelDropdownMenu');
+        const routeFuelSelect = document.getElementById('routeCarbSelect');
+        const fuelLabel = document.getElementById('lblActiveFuel');
+        const fuelDot = document.getElementById('activeFuelDot');
+        const fuelButton = document.getElementById('btnFuelDropdown');
+
+        if (fuelLabel) fuelLabel.textContent = fuelConfig.text;
+        if (fuelDot) fuelDot.textContent = fuelConfig.dot;
+        fuelButton?.classList.toggle('active-fuel', fuel !== 'tutte');
+
+        fuelMenu?.querySelectorAll('.dropdown-item').forEach((item) => {
+            const isSelected = item.dataset.val === (fuel === 'tutte' ? '' : fuel);
+            item.classList.toggle('active', isSelected);
+            item.querySelector('.dropdown-check')?.classList.toggle('hidden', !isSelected);
+        });
+
+        if (
+            routeFuelSelect &&
+            (syncRouteFuel || this.activeFilters.carburante) &&
+            [...routeFuelSelect.options].some((option) => option.value === fuel)
+        ) {
+            routeFuelSelect.value = fuel;
+        }
+
+        const syncToggle = (ids, isActive) => {
+            ids.forEach((id) => {
+                const button = document.getElementById(id);
+                if (!button) return;
+                button.classList.toggle('active', isActive);
+                button.setAttribute('aria-pressed', String(isActive));
+            });
+        };
+
+        syncToggle(
+            ['btnFilterCheapest', 'btnRouteCheapest'],
+            this.activeFilters.soloEconomico
+        );
+        syncToggle(
+            ['btnFilterClosed', 'btnRouteClosed'],
+            this.activeFilters.mostraChiusi
+        );
+    },
+
+    refreshNearbyStations() {
+        if (!this.isRouteModeActive) {
+            this.loadDistributori(this.currentLat, this.currentLon);
+        }
+    },
 
     init() {
         DynamicIsland.init();
@@ -207,6 +268,8 @@ const App = {
     },
 
     bindEvents() {
+        this.syncFilterControls();
+
         // --- Pannello Mappa & Strumenti (Google Maps Layers Style) ---
         const btnTools = document.getElementById('btnTools');
         const toolsModal = document.getElementById('toolsModalCard');
@@ -632,8 +695,6 @@ const App = {
         const fuelWrap = document.getElementById('fuelDropdownWrap');
         const btnFuelDrop = document.getElementById('btnFuelDropdown');
         const menuFuelDrop = document.getElementById('fuelDropdownMenu');
-        const lblActiveFuel = document.getElementById('lblActiveFuel');
-        const activeFuelDot = document.getElementById('activeFuelDot');
 
         if (btnFuelDrop && menuFuelDrop) {
             btnFuelDrop.addEventListener('click', (e) => {
@@ -649,36 +710,14 @@ const App = {
                     e.stopPropagation();
                     const val = item.dataset.val;
                     this.activeFilters.carburante = val || null;
-
-                    // Aggiorna stato visivo voci
-                    menuFuelDrop.querySelectorAll('.dropdown-item').forEach(it => {
-                        it.classList.remove('active');
-                        const chk = it.querySelector('.dropdown-check');
-                        if (chk) chk.classList.add('hidden');
-                    });
-                    item.classList.add('active');
-                    const myCheck = item.querySelector('.dropdown-check');
-                    if (myCheck) myCheck.classList.remove('hidden');
-
-                    // Aggiorna etichetta e pallino sul pulsante principale
-                    const labels = {
-                        '': { text: 'Tutti', dot: '✨' },
-                        'benzina': { text: 'Benzina', dot: '🟢' },
-                        'diesel':  { text: 'Diesel', dot: '⚫' },
-                        'gpl':     { text: 'GPL', dot: '💧' },
-                        'metano':  { text: 'Metano', dot: '💨' }
-                    };
-                    const currentCfg = labels[val] || labels[''];
-                    if (lblActiveFuel) lblActiveFuel.textContent = currentCfg.text;
-                    if (activeFuelDot) activeFuelDot.textContent = currentCfg.dot;
-                    if (btnFuelDrop) btnFuelDrop.classList.toggle('active-fuel', val !== '');
+                    this.syncFilterControls({ syncRouteFuel: true });
 
                     // Chiudi il menù
                     menuFuelDrop.classList.add('hidden');
                     if (fuelWrap) fuelWrap.classList.remove('open');
 
                     // Ricarica la mappa con il nuovo filtro
-                    this.loadDistributori(this.currentLat, this.currentLon);
+                    this.refreshNearbyStations();
                 });
             });
 
@@ -696,8 +735,8 @@ const App = {
         if (btnCheapest) {
             btnCheapest.addEventListener('click', () => {
                 this.activeFilters.soloEconomico = !this.activeFilters.soloEconomico;
-                btnCheapest.classList.toggle('active', this.activeFilters.soloEconomico);
-                this.loadDistributori(this.currentLat, this.currentLon);
+                this.syncFilterControls();
+                this.refreshNearbyStations();
             });
         }
 
@@ -707,8 +746,8 @@ const App = {
             btnClosed.addEventListener('click', () => {
                 this.activeFilters.mostraChiusi = !this.activeFilters.mostraChiusi;
                 this.activeFilters.soloAperti = !this.activeFilters.mostraChiusi;
-                btnClosed.classList.toggle('active', this.activeFilters.mostraChiusi);
-                this.loadDistributori(this.currentLat, this.currentLon);
+                this.syncFilterControls();
+                this.refreshNearbyStations();
             });
         }
 
@@ -820,8 +859,29 @@ const App = {
         const btnClearRoute = document.getElementById('btnClearRoute');
         const startInput = document.getElementById('routeStartInput');
         const destInput = document.getElementById('routeDestInput');
+        const routeFuelSelect = document.getElementById('routeCarbSelect');
+        const btnRouteCheapest = document.getElementById('btnRouteCheapest');
+        const btnRouteClosed = document.getElementById('btnRouteClosed');
 
         if (btnOpenRoute && routeModal) {
+            routeFuelSelect?.addEventListener('change', () => {
+                this.activeFilters.carburante = routeFuelSelect.value === 'tutte'
+                    ? null
+                    : routeFuelSelect.value;
+                this.syncFilterControls({ syncRouteFuel: true });
+            });
+
+            btnRouteCheapest?.addEventListener('click', () => {
+                this.activeFilters.soloEconomico = !this.activeFilters.soloEconomico;
+                this.syncFilterControls();
+            });
+
+            btnRouteClosed?.addEventListener('click', () => {
+                this.activeFilters.mostraChiusi = !this.activeFilters.mostraChiusi;
+                this.activeFilters.soloAperti = !this.activeFilters.mostraChiusi;
+                this.syncFilterControls();
+            });
+
             const setupRouteAutocomplete = (input, suggestionsWrap) => {
                 if (!input || !suggestionsWrap) {
                     return { hide: () => {}, clearSelection: () => {} };
@@ -1059,6 +1119,7 @@ const App = {
                 if (!routeModal.classList.contains('hidden')) hideRouteSuggestions();
                 routeModal.classList.toggle('hidden');
                 if (!routeModal.classList.contains('hidden')) {
+                    this.syncFilterControls();
                     if (FuelMap.userLat && FuelMap.userLon && (!startInput.value || startInput.value.includes('posizione'))) {
                         startInput.value = 'La mia posizione attuale';
                     }
@@ -1079,6 +1140,7 @@ const App = {
                     this.isRouteModeActive = false;
                     this.currentRouteStart = null;
                     this.currentRouteDest = null;
+                    this.currentPitStops = [];
                     FuelMap.clearRoute();
                     btnClearRoute.classList.add('hidden');
                     destInput.value = '';
@@ -1119,6 +1181,7 @@ const App = {
         const destVal = destInput.value.trim();
         const carburante = carbSelect.value;
         const preferenza = typeSelect ? typeSelect.value : 'tutte';
+        const includiChiusi = this.activeFilters.mostraChiusi;
         const autonomiaKm = sliderAutonomia ? parseInt(sliderAutonomia.value, 10) : 250;
         const getSelectedLocation = (input, value) => {
             if (!input || input.dataset.selectedLocationValue !== value) return null;
@@ -1173,7 +1236,13 @@ const App = {
             FuelMap.drawRoute(route.geometry);
 
             // 5. Cerca distributori lungo il buffer del tracciato secondo la preferenza (Autostrada / Risparmio)
-            const fuelRes = await API.getDistributoriSuPercorso(route.geometry, carburante, preferenza);
+            const fuelRes = await API.getDistributoriSuPercorso(
+                route.geometry,
+                carburante,
+                preferenza,
+                autonomiaKm,
+                includiChiusi
+            );
             const stations = fuelRes.distributori;
 
             if (!stations || stations.length === 0) {
@@ -1189,76 +1258,126 @@ const App = {
 
             // 6. Calcolo Pit-Stop Planner: progressione e finestra di sosta sicura
             const { cumDist } = this.calculateStationRouteProgress(route.geometry.coordinates, stations);
-
-            let recommendedPitStop = null;
-            let needsRefuel = false;
-            let safeKmMin = 0;
-            let safeKmMax = 0;
-
-            if (autonomiaKm < distTotKm) {
-                needsRefuel = true;
-                // Finestra sicura: tra il 65% e il 90% dell'autonomia
-                safeKmMax = Math.min(distTotKm, Math.max(30, autonomiaKm * 0.90));
-                safeKmMin = Math.max(0, Math.min(safeKmMax - 30, autonomiaKm * 0.65));
-
-                let candidates = stations.filter(s => s.progressioneKm >= safeKmMin && s.progressioneKm <= safeKmMax);
-                if (candidates.length === 0) {
-                    const beforeMax = stations.filter(s => s.progressioneKm <= safeKmMax);
-                    candidates = beforeMax.length > 0 ? beforeMax.slice(-3) : stations.slice(0, 3);
+            const routePlan = carburante === 'tutte'
+                ? {
+                    pitStops: [],
+                    safeWindows: [],
+                    complete: false,
+                    remainingDistanceKm: distTotKm
                 }
+                : this.planRoutePitStops(
+                    stations.filter((station) => station.stato !== 'chiuso'),
+                    autonomiaKm,
+                    distTotKm,
+                    carburante
+                );
+            const { pitStops, safeWindows, complete, remainingDistanceKm } = routePlan;
+            this.currentPitStops = pitStops;
+            FuelMap.drawRefuelZones(route.geometry.coordinates, cumDist, safeWindows);
 
-                // Trova la pompa più conveniente all'interno della finestra di sosta sicura
-                let bestCandPrice = Infinity;
-                candidates.forEach(s => {
-                    s.inSafeZone = true;
-                    const p = parseFloat(s[`prezzo_${carburante}`] || s.prezzo_benzina || s.prezzo_diesel);
-                    if (!isNaN(p) && p < bestCandPrice) {
-                        bestCandPrice = p;
-                        recommendedPitStop = s;
-                    }
-                });
-
-                if (recommendedPitStop) {
-                    recommendedPitStop.isRecommendedPitStop = true;
+            if (distTotKm > autonomiaKm) {
+                if (carburante === 'tutte') {
+                    this.showToast('Per suggerire le soste in base all’autonomia, scegli il carburante del veicolo.');
+                } else if (complete) {
+                    this.showToast(`⛽ Servono ${pitStops.length} soste per ${distTotKm.toFixed(0)} km. Le trovi numerate sulla mappa.`);
+                } else if (pitStops.length) {
+                    this.showToast(`⚠️ Ho trovato ${pitStops.length} soste, ma non pompe entro autonomia per gli ultimi ${remainingDistanceKm.toFixed(0)} km.`);
+                } else {
+                    this.showToast(`⚠️ Autonomia insufficiente: non ho trovato pompe entro ${autonomiaKm} km dalla partenza.`);
                 }
-
-                // Evidenzia visivamente sulla mappa la finestra di rifornimento
-                FuelMap.drawRefuelZone(route.geometry.coordinates, cumDist, safeKmMin, safeKmMax);
-                this.showToast(`⚠️ Autonomia (${autonomiaKm} km) insufficiente per ${distTotKm.toFixed(0)} km. Sosta consigliata tra km ${safeKmMin.toFixed(0)} e ${safeKmMax.toFixed(0)}!`);
             } else {
-                FuelMap.clearRefuelZone();
                 this.showToast(`🟢 Autonomia sufficiente (${autonomiaKm} km su ${distTotKm.toFixed(0)} km). ${stations.length} pompe sul tragitto (~${mins} min)!`);
             }
 
             // Trova anche la pompa in assoluto più conveniente dell'intero viaggio
+            const routePrice = (station) => {
+                if (carburante !== 'tutte') {
+                    const price = Number.parseFloat(station[`prezzo_${carburante}`]);
+                    return Number.isFinite(price) && price > 0 ? price : Infinity;
+                }
+                return Infinity;
+            };
+
             let minPrice = Infinity;
             let cheapestStation = null;
-            stations.forEach(d => {
-                const p = parseFloat(d[`prezzo_${carburante}`] || d.prezzo_benzina || d.prezzo_diesel);
-                if (!isNaN(p) && p < minPrice) {
-                    minPrice = p;
-                    cheapestStation = d;
-                }
-            });
+            if (carburante !== 'tutte') {
+                stations.forEach(d => {
+                    const p = routePrice(d);
+                    if (p < minPrice) {
+                        minPrice = p;
+                        cheapestStation = d;
+                    }
+                });
+            }
 
-            const cheapestId = cheapestStation ? cheapestStation.id : stations[0].id;
+            const cheapestId = cheapestStation ? cheapestStation.id : null;
             this.cheapestStationId = cheapestId;
 
             // 7. Mostra ESCLUSIVAMENTE le pompe sul percorso con indicatori sosta/corona
-            FuelMap.renderDistributori(stations, cheapestId, carburante);
+            let displayStations = stations;
+            if (this.activeFilters.soloEconomico) {
+                if (carburante === 'tutte') {
+                    const averagesByFuel = {};
+                    ['benzina', 'diesel', 'gpl', 'metano'].forEach((fuel) => {
+                        const prices = stations
+                            .filter((station) => station[`${fuel}_disponibile`] === true)
+                            .map((station) => Number.parseFloat(station[`prezzo_${fuel}`]))
+                            .filter((price) => Number.isFinite(price) && price > 0);
+                        if (prices.length) {
+                            averagesByFuel[fuel] = prices.reduce((sum, price) => sum + price, 0) / prices.length;
+                        }
+                    });
+
+                    displayStations = stations.filter((station) =>
+                        station.isRecommendedPitStop ||
+                        Object.entries(averagesByFuel).some(([fuel, average]) => {
+                            const price = Number.parseFloat(station[`prezzo_${fuel}`]);
+                            return station[`${fuel}_disponibile`] === true &&
+                                Number.isFinite(price) &&
+                                price > 0 &&
+                                price <= average;
+                        })
+                    );
+                } else {
+                    const pricedStations = stations
+                        .map((station) => ({ station, price: routePrice(station) }))
+                        .filter((entry) => Number.isFinite(entry.price));
+                    const averagePrice = pricedStations.length
+                        ? pricedStations.reduce((sum, entry) => sum + entry.price, 0) / pricedStations.length
+                        : null;
+
+                    if (averagePrice !== null) {
+                        displayStations = stations.filter((station) =>
+                            station.isRecommendedPitStop || routePrice(station) <= averagePrice
+                        );
+                    }
+                }
+            }
+
+            FuelMap.renderDistributori(
+                displayStations,
+                cheapestId,
+                carburante === 'tutte' ? null : carburante
+            );
 
             btnClear.classList.remove('hidden');
             routeModal.classList.add('hidden');
 
-            // Notifica visiva su Dynamic Island stile Apple
-            if (needsRefuel && recommendedPitStop) {
-                DynamicIsland.showPitStop(recommendedPitStop, recommendedPitStop.progressioneKm);
+            // Evidenzia il piano e la prima sosta consigliata.
+            if (pitStops.length) {
+                DynamicIsland.showPitStop(
+                    pitStops[0],
+                    pitStops[0].progressioneKm,
+                    pitStops.length
+                );
             } else if (cheapestStation) {
                 DynamicIsland.showDeal(cheapestStation, `Al km ${Math.round(cheapestStation.progressioneKm || 0)}`, true);
+            } else if (carburante === 'tutte') {
+                DynamicIsland.showStatus(`${displayStations.length} pompe sul percorso`, '⛽', 5000);
             }
 
             // 8. Apri subito la sosta consigliata se necessaria per autonomia, oppure la più economica
-            const bestToOpen = (needsRefuel && recommendedPitStop) ? recommendedPitStop : (cheapestStation || stations[0]);
+            const bestToOpen = pitStops[0] || cheapestStation || stations[0];
             if (bestToOpen) {
                 setTimeout(() => {
                     this.openSheet(bestToOpen, bestToOpen.id === cheapestId);
@@ -1272,6 +1391,105 @@ const App = {
             btnCalc.disabled = false;
             btnCalc.innerHTML = '<span>🔍 Trova Pompe sul Percorso</span>';
         }
+    },
+
+    planRoutePitStops(stations, autonomyKm, totalDistanceKm, fuel) {
+        const safeWindowEndKm = Math.min(
+            autonomyKm * 0.9,
+            Math.max(30, autonomyKm - 10)
+        );
+        const safeWindowStartKm = Math.max(
+            0,
+            Math.min(safeWindowEndKm - 30, autonomyKm * 0.65)
+        );
+        const pitStops = [];
+        const safeWindows = [];
+        const usedStationIds = new Set();
+        let lastStopKm = 0;
+        const maxIterations = Math.min(
+            100,
+            Math.max(1, Math.ceil(totalDistanceKm / Math.max(safeWindowStartKm, 1)) + 1)
+        );
+
+        const stationPrice = (station) => {
+            const rawPrice = station[`prezzo_${fuel}`] ?? station.prezzo_benzina ?? station.prezzo_diesel;
+            const price = Number.parseFloat(rawPrice);
+            return Number.isFinite(price) && price > 0 ? price : Infinity;
+        };
+
+        const estimatedRemainingStops = (station) => {
+            const remainingKm = Math.max(0, totalDistanceKm - station.progressioneKm);
+            return Math.max(0, Math.ceil(remainingKm / autonomyKm) - 1);
+        };
+
+        const compareCandidates = (first, second) => {
+            const remainingStopsDifference =
+                estimatedRemainingStops(first) - estimatedRemainingStops(second);
+            if (remainingStopsDifference !== 0) return remainingStopsDifference;
+
+            const firstPrice = stationPrice(first);
+            const secondPrice = stationPrice(second);
+            if (firstPrice !== secondPrice) return firstPrice - secondPrice;
+
+            return second.progressioneKm - first.progressioneKm;
+        };
+
+        for (let index = 0; index < maxIterations; index++) {
+            if (totalDistanceKm - lastStopKm <= autonomyKm) break;
+
+            const windowStartKm = lastStopKm + safeWindowStartKm;
+            const windowEndKm = Math.min(
+                totalDistanceKm,
+                lastStopKm + safeWindowEndKm
+            );
+            const candidatesInReach = stations.filter((station) => {
+                const progressKm = Number(station.progressioneKm);
+                return Number.isFinite(progressKm) &&
+                    progressKm > lastStopKm + 5 &&
+                    progressKm <= windowEndKm &&
+                    !usedStationIds.has(String(station.id));
+            });
+            const safeCandidates = candidatesInReach.filter((station) =>
+                station.progressioneKm >= windowStartKm
+            );
+            const candidates = safeCandidates.length
+                ? safeCandidates
+                : candidatesInReach;
+
+            if (!candidates.length) break;
+
+            candidates.sort(compareCandidates);
+            const stop = candidates[0];
+            const stopKm = Number(stop.progressioneKm);
+            if (!Number.isFinite(stopKm) || stopKm <= lastStopKm + 5) break;
+
+            stop.isRecommendedPitStop = true;
+            stop.pitStopNumber = pitStops.length + 1;
+            stop.inSafeZone = safeCandidates.includes(stop);
+            stop.safeWindowStartKm = windowStartKm;
+            stop.safeWindowEndKm = windowEndKm;
+            pitStops.push(stop);
+            usedStationIds.add(String(stop.id));
+
+            if (stop.inSafeZone) {
+                safeWindows.push({
+                    startKm: windowStartKm,
+                    endKm: windowEndKm,
+                    number: stop.pitStopNumber
+                });
+            }
+
+            lastStopKm = stopKm;
+        }
+
+        const remainingDistanceKm = Math.max(0, totalDistanceKm - lastStopKm);
+
+        return {
+            pitStops,
+            safeWindows,
+            complete: remainingDistanceKm <= autonomyKm,
+            remainingDistanceKm
+        };
     },
 
     // Calcola la progressione chilometrica di ogni distributore rispetto al tracciato
@@ -1469,7 +1687,10 @@ const App = {
         const pitstopBadge = document.getElementById('sheetPitstopBadge');
         if (pitstopBadge) {
             if (d.isRecommendedPitStop) {
-                pitstopBadge.textContent = '🎯 Sosta Consigliata per Autonomia';
+                const totalStops = this.currentPitStops.length || 1;
+                pitstopBadge.textContent = d.pitStopNumber
+                    ? `🎯 Sosta ${d.pitStopNumber} di ${totalStops} consigliata`
+                    : '🎯 Sosta Consigliata per Autonomia';
                 pitstopBadge.classList.remove('hidden');
             } else if (d.inSafeZone) {
                 pitstopBadge.textContent = '✅ Nella Finestra di Sosta';

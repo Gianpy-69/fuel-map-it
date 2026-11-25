@@ -78,7 +78,7 @@ app.use(cors({
     ],
     credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 // Compressione gzip/brotli per ridurre il traffico (~60-80% in meno)
 app.use(compression({ threshold: 1024 }));

@@ -12,6 +12,10 @@ const VALID_FUELS = new Set([
     'gpl',
     'metano'
 ]);
+const VALID_ROUTE_FUELS = new Set([
+    ...VALID_FUELS,
+    'tutte'
+]);
 
 const VALID_ROUTE_PREFERENCES = new Set([
     'tutte',
@@ -323,7 +327,8 @@ router.post('/percorso', async (req, res) => {
             carburante,
             autonomia_km: requestedAutonomyKm,
             buffer_m: requestedBuffer,
-            preferenza: requestedPreference
+            preferenza: requestedPreference,
+            includi_chiusi: requestedIncludeClosed
         } = req.body;
 
         if (
@@ -385,7 +390,7 @@ router.post('/percorso', async (req, res) => {
             String(requestedAutonomyKm ?? 250)
         );
 
-        if (!VALID_FUELS.has(fuel)) {
+        if (!VALID_ROUTE_FUELS.has(fuel)) {
             return res.status(400).json({
                 errore: 'Tipo di carburante non valido'
             });
@@ -407,10 +412,37 @@ router.post('/percorso', async (req, res) => {
             });
         }
 
-        let fuelClause = `
-            AND s.${fuel}_disponibile = true
-            AND s.prezzo_${fuel} IS NOT NULL
+        let fuelClause = '';
+        let routeFuelPriceExpression = `s.prezzo_${fuel}`;
+        let segmentOrderBy = `
+            route_fuel_price ASC,
+            autostradale DESC,
+            progress_m ASC
         `;
+
+        if (fuel === 'tutte') {
+            const availableFuelClauses = [
+                's.benzina_disponibile = true AND s.prezzo_benzina IS NOT NULL',
+                's.diesel_disponibile = true AND s.prezzo_diesel IS NOT NULL',
+                's.gpl_disponibile = true AND s.prezzo_gpl IS NOT NULL',
+                's.metano_disponibile = true AND s.prezzo_metano IS NOT NULL'
+            ];
+
+            fuelClause = `AND (${availableFuelClauses.join(' OR ')})`;
+            // Prezzi per carburanti diversi non sono confrontabili tra loro.
+            routeFuelPriceExpression = 'NULL::numeric';
+            segmentOrderBy = 'progress_m ASC, autostradale DESC';
+        } else {
+            fuelClause = `
+                AND s.${fuel}_disponibile = true
+                AND s.prezzo_${fuel} IS NOT NULL
+            `;
+        }
+
+        const includeClosed = requestedIncludeClosed === true;
+        const operatingStatusClause = includeClosed
+            ? ''
+            : "AND s.stato <> 'chiuso'";
 
         let preferenceClause = '';
 
@@ -420,13 +452,6 @@ router.post('/percorso', async (req, res) => {
             preferenceClause = 'AND d.autostradale = false';
         }
 
-        const orderClause = `
-            ORDER BY
-                s.prezzo_${fuel} ASC,
-                d.autostradale DESC,
-                progress_m ASC
-        `;
-
         const querySql = `
             WITH route AS (
                 SELECT
@@ -434,67 +459,123 @@ router.post('/percorso', async (req, res) => {
                         ST_GeomFromGeoJSON($1),
                         4326
                     ) AS geom
+            ),
+            route_metrics AS (
+                SELECT
+                    geom,
+                    ST_Length(geom::geography) AS length_m
+                FROM route
+            ),
+            station_candidates AS (
+                SELECT
+                    d.id,
+                    d.nome,
+                    d.indirizzo,
+                    d.comune,
+                    d.provincia,
+                    d.bandiera,
+                    d.autostradale,
+                    d.self_service,
+
+                    ST_Y(d.posizione::geometry) AS lat,
+                    ST_X(d.posizione::geometry) AS lon,
+
+                    s.stato,
+                    s.benzina_disponibile,
+                    s.diesel_disponibile,
+                    s.gpl_disponibile,
+                    s.metano_disponibile,
+                    s.prezzo_benzina,
+                    s.prezzo_diesel,
+                    s.prezzo_gpl,
+                    s.prezzo_metano,
+                    s.livello_coda,
+                    s.conferme,
+                    s.ultimo_aggiornamento,
+
+                    ROUND(
+                        ST_Distance(
+                            d.posizione,
+                            route_metrics.geom::geography
+                        )::numeric
+                    ) AS dist_tracciato_m,
+
+                    ROUND(
+                        (
+                            route_position.route_fraction * route_metrics.length_m
+                        )::numeric
+                    ) AS progress_m,
+
+                    FLOOR(
+                        route_position.route_fraction * route_metrics.length_m / 30000
+                    )::int AS route_segment,
+
+                    ${routeFuelPriceExpression} AS route_fuel_price
+
+                FROM distributori d
+                CROSS JOIN route_metrics
+                CROSS JOIN LATERAL (
+                    SELECT ST_LineLocatePoint(
+                        route_metrics.geom,
+                        d.posizione::geometry
+                    ) AS route_fraction
+                ) route_position
+                INNER JOIN stato_operativo s
+                    ON s.distributore_id = d.id
+
+                WHERE d.nascosto = false
+                  ${operatingStatusClause}
+                  AND ST_DWithin(
+                      d.posizione,
+                      route_metrics.geom::geography,
+                      $2
+                  )
+                  ${fuelClause}
+                  ${preferenceClause}
+            ),
+            ranked_stations AS (
+                SELECT
+                    station_candidates.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY route_segment
+                        ORDER BY ${segmentOrderBy}
+                    ) AS segment_rank
+                FROM station_candidates
             )
             SELECT
-                d.id,
-                d.nome,
-                d.indirizzo,
-                d.comune,
-                d.provincia,
-                d.bandiera,
-                d.autostradale,
-                d.self_service,
-
-                ST_Y(d.posizione::geometry) AS lat,
-                ST_X(d.posizione::geometry) AS lon,
-
-                s.stato,
-                s.benzina_disponibile,
-                s.diesel_disponibile,
-                s.gpl_disponibile,
-                s.metano_disponibile,
-                s.prezzo_benzina,
-                s.prezzo_diesel,
-                s.prezzo_gpl,
-                s.prezzo_metano,
-                s.livello_coda,
-                s.conferme,
-                s.ultimo_aggiornamento,
-
-                ROUND(
-                    ST_Distance(
-                        d.posizione,
-                        route.geom::geography
-                    )::numeric
-                ) AS dist_tracciato_m,
-
-                ROUND(
-                    (
-                        ST_LineLocatePoint(
-                            route.geom,
-                            d.posizione::geometry
-                        ) *
-                        ST_Length(route.geom::geography)
-                    )::numeric
-                ) AS progress_m
-
-            FROM distributori d
-            CROSS JOIN route
-            INNER JOIN stato_operativo s
-                ON s.distributore_id = d.id
-
-            WHERE d.nascosto = false
-              AND s.stato <> 'chiuso'
-              AND ST_DWithin(
-                  d.posizione,
-                  route.geom::geography,
-                  $2
-              )
-              ${fuelClause}
-              ${preferenceClause}
-
-            ${orderClause}
-            LIMIT 60
+                id,
+                nome,
+                indirizzo,
+                comune,
+                provincia,
+                bandiera,
+                autostradale,
+                self_service,
+                lat,
+                lon,
+                stato,
+                benzina_disponibile,
+                diesel_disponibile,
+                gpl_disponibile,
+                metano_disponibile,
+                prezzo_benzina,
+                prezzo_diesel,
+                prezzo_gpl,
+                prezzo_metano,
+                livello_coda,
+                conferme,
+                ultimo_aggiornamento,
+                dist_tracciato_m,
+                progress_m
+            FROM ranked_stations
+            WHERE segment_rank <= (
+                SELECT CASE
+                    WHEN length_m <= 300000 THEN 60
+                    ELSE 5
+                END
+                FROM route_metrics
+            )
+            ORDER BY progress_m ASC, route_fuel_price ASC
         `;
 
         const result = await pool.query(querySql, [
@@ -502,11 +583,15 @@ router.post('/percorso', async (req, res) => {
             effectiveBuffer
         ]);
 
-        const planner = planPitStops({
-            stations: result.rows,
-            fuel,
-            autonomyKm
-        });
+        const planner = fuel === 'tutte'
+            ? null
+            : planPitStops({
+                stations: result.rows.filter(
+                    (station) => station.stato !== 'chiuso'
+                ),
+                fuel,
+                autonomyKm
+            });
 
         return res.json({
             totale: result.rows.length,

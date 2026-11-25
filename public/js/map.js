@@ -5,6 +5,7 @@
 const FuelMap = {
     map: null,
     markers: [],
+    pitStopMarkers: [],
     clusterGroup: null,
     userMarker: null,
     userAccuracyCircle: null,
@@ -112,9 +113,14 @@ const FuelMap = {
             
         const stato = d.stato || 'sconosciuto';
         const isPitStop = Boolean(d.isRecommendedPitStop);
-        const crownHtml = isCheapest 
-            ? '<div class="pin-crown">👑</div>' 
-            : (isPitStop ? '<div class="pin-crown pin-crown-pitstop" title="Tappa sosta consigliata">🎯</div>' : '');
+        const cheapestBadge = isCheapest
+            ? '<div class="pin-crown">👑</div>'
+            : '';
+        const pitStopNumber = Number.parseInt(d.pitStopNumber, 10);
+        const pitStopBadge = isPitStop
+            ? `<div class="pin-crown pin-crown-pitstop" title="Sosta consigliata ${pitStopNumber || 1}">${pitStopNumber || '🎯'}</div>`
+            : '';
+        const crownHtml = `${cheapestBadge}${pitStopBadge}`;
         const highwayTag = d.autostradale ? '<span class="pin-highway-badge" title="Area di Servizio Autostradale">🛣️</span>' : '';
 
         const width = d.autostradale ? 80 : 66;
@@ -143,8 +149,11 @@ const FuelMap = {
         } else {
             this.markers.forEach(m => this.map.removeLayer(m));
         }
+        this.pitStopMarkers.forEach(marker => this.map.removeLayer(marker));
+        this.pitStopMarkers = [];
         this.markers = [];
         const newMarkers = [];
+        const routeStopMarkers = [];
 
         distributori.forEach(d => {
             const isCheapest = d.id === cheapestId;
@@ -157,15 +166,21 @@ const FuelMap = {
             });
 
             marker.distributoreData = d;
-            newMarkers.push(marker);
+            if (d.isRecommendedPitStop) {
+                routeStopMarkers.push(marker);
+            } else {
+                newMarkers.push(marker);
+            }
             this.markers.push(marker);
         });
 
         if (this.clusterGroup) {
             this.clusterGroup.addLayers(newMarkers);
+            routeStopMarkers.forEach(marker => marker.addTo(this.map));
         } else {
-            newMarkers.forEach(m => m.addTo(this.map));
+            [...newMarkers, ...routeStopMarkers].forEach(m => m.addTo(this.map));
         }
+        this.pitStopMarkers = routeStopMarkers;
     },
 
     setUserPosition(lat, lon) {
@@ -277,6 +292,54 @@ const FuelMap = {
             }
         } catch (e) {
             console.warn('Errore calcolo bounds rotta:', e);
+        }
+    },
+
+    drawRefuelZones(coords, cumDist, windows = []) {
+        this.clearRefuelZone();
+        if (!Array.isArray(windows) || windows.length === 0) return;
+
+        const routeZones = L.layerGroup();
+
+        windows.forEach((window) => {
+            const meterMin = window.startKm * 1000;
+            const meterMax = window.endKm * 1000;
+            const zoneCoords = [];
+
+            for (let i = 0; i < coords.length; i++) {
+                const meter = cumDist[i];
+                if (meter >= meterMin && meter <= meterMax) {
+                    zoneCoords.push([coords[i][1], coords[i][0]]);
+                }
+            }
+
+            if (zoneCoords.length < 2) return;
+
+            routeZones.addLayer(L.polyline(zoneCoords, {
+                color: '#10B981',
+                weight: 12,
+                opacity: 0.45,
+                lineCap: 'round',
+                lineJoin: 'round'
+            }));
+
+            const mainLine = L.polyline(zoneCoords, {
+                color: '#047857',
+                weight: 5,
+                opacity: 0.95,
+                dashArray: '8, 6',
+                lineCap: 'round',
+                lineJoin: 'round'
+            });
+            mainLine.bindTooltip(`🎯 <b>Sosta ${window.number}</b><br>Tra km ${window.startKm.toFixed(0)} e ${window.endKm.toFixed(0)}`, {
+                sticky: true,
+                className: 'refuel-zone-tooltip'
+            });
+            routeZones.addLayer(mainLine);
+        });
+
+        if (routeZones.getLayers().length) {
+            this.refuelZoneLayer = routeZones.addTo(this.map);
         }
     },
 

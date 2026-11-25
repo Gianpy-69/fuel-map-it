@@ -363,11 +363,20 @@
             <div class="route-carb-row">
                 <label for="routeCarbSelect">Carburante:</label>
                 <select id="routeCarbSelect">
+                    <option value="tutte">✨ Tutti i Carburanti</option>
                     <option value="benzina">⛽ Benzina</option>
                     <option value="diesel">⛽ Diesel</option>
                     <option value="gpl">💧 GPL</option>
                     <option value="metano">💨 Metano</option>
                 </select>
+            </div>
+            <div class="route-mode-row" aria-label="Filtri di ricerca">
+                <button type="button" class="filter-chip filter-chip-crown" id="btnRouteCheapest" aria-pressed="false">
+                    👑 Più Economico
+                </button>
+                <button type="button" class="filter-chip" id="btnRouteClosed" aria-pressed="false">
+                    🔴 Chiusi
+                </button>
             </div>
             <div class="route-carb-row">
                 <label for="routeTypeSelect">Impianti:</label>
