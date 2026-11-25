@@ -161,18 +161,21 @@ const App = {
     init() {
         DynamicIsland.init();
         FuelMap.init();
+
+        // Applica prima il filtro salvato, poi carica subito l'area iniziale.
+        // La ricerca non deve aspettare che il browser risponda alla richiesta GPS.
+        const savedFuel = localStorage.getItem('fuelmap_default_fuel');
+        if (savedFuel && savedFuel !== 'tutti') {
+            this.activeFilters.carburante = savedFuel;
+        }
+
+        this.loadDefault();
         this.bindEvents();
         this.locateUser();
         this.initNotifications();
         this.loadFavorites();
         this.updateFavoritesBadge();
         this.initOnboarding();
-
-        // Caricamento preferenza carburante predefinito
-        const savedFuel = localStorage.getItem('fuelmap_default_fuel');
-        if (savedFuel && savedFuel !== 'tutti') {
-            this.activeFilters.carburante = savedFuel;
-        }
 
         // Registrazione Service Worker per PWA (solo browser web, non su app nativa)
         if ('serviceWorker' in navigator && !window.Capacitor) {

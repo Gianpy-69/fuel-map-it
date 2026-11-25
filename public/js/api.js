@@ -224,8 +224,18 @@ const API = {
             `${this.baseUrl}/api/distributori/vicini?` +
             params.toString();
 
+        const controller = typeof AbortController === 'function'
+            ? new AbortController()
+            : null;
+        const timeoutId = controller
+            ? setTimeout(() => controller.abort(), 20000)
+            : null;
+
         try {
-            const response = await fetch(url);
+            const response = await fetch(
+                url,
+                controller ? { signal: controller.signal } : undefined
+            );
             if (!response.ok) {
                 throw new Error(`Errore API: ${response.status}`);
             }
@@ -240,6 +250,10 @@ const API = {
                 return cached;
             }
             throw err;
+        } finally {
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+            }
         }
     },
 
