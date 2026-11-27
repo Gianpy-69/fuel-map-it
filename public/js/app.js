@@ -253,7 +253,7 @@ const App = {
 
         // Registrazione Service Worker per PWA (solo browser web, non su app nativa)
         if ('serviceWorker' in navigator && !window.Capacitor) {
-            navigator.serviceWorker.register('/sw.js').catch((err) => {
+            navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch((err) => {
                 console.warn('Service Worker non registrato:', err);
             });
         }

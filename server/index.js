@@ -15,8 +15,9 @@ const { initScheduler } = require('./cron/scheduler');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Security Headers con Helmet (Configurato per Leaflet, OpenStreetMap, Analytics e Capacitor)
+// Security Headers con Helmet (Configurato per Leaflet, OpenFreeMap, Analytics, CDN e Capacitor)
 app.use(helmet({
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
@@ -35,7 +36,8 @@ app.use(helmet({
             ],
             fontSrc: [
                 "'self'",
-                "https://fonts.gstatic.com"
+                "https://fonts.gstatic.com",
+                "https://tiles.openfreemap.org"
             ],
             imgSrc: [
                 "'self'",
@@ -43,20 +45,34 @@ app.use(helmet({
                 "blob:",
                 "https://tiles.openfreemap.org",
                 "https://server.arcgisonline.com",
+                "https://services.arcgisonline.com",
                 "https://unpkg.com",
                 "https://www.google-analytics.com",
-                "https://*.googletagmanager.com"
+                "https://*.google-analytics.com",
+                "https://*.analytics.google.com",
+                "https://*.googletagmanager.com",
+                "https://*.google.com",
+                "https://encrypted-tbn0.gstatic.com",
+                "https://images.unsplash.com",
+                "https://investiuser.blob.core.windows.net",
+                "https://www.shell.it"
             ],
             connectSrc: [
                 "'self'",
+                "https://unpkg.com",
+                "https://fonts.googleapis.com",
+                "https://fonts.gstatic.com",
                 "https://photon.komoot.io",
                 "https://nominatim.openstreetmap.org",
                 "https://tiles.openfreemap.org",
+                "https://server.arcgisonline.com",
+                "https://services.arcgisonline.com",
                 "https://router.project-osrm.org",
                 "https://fuel-map-it.onrender.com",
                 "https://*.google-analytics.com",
                 "https://*.analytics.google.com",
                 "https://*.googletagmanager.com",
+                "https://*.google.com",
                 "capacitor://localhost",
                 "ionic://localhost",
                 "https://localhost"
@@ -83,8 +99,14 @@ app.use(express.json({ limit: '2mb' }));
 // Compressione gzip/brotli per ridurre il traffico (~60-80% in meno)
 app.use(compression({ threshold: 1024 }));
 
-// File statici (frontend)
-app.use(express.static(path.join(__dirname, '..', 'public')));
+// File statici (frontend) — disabilita caching HTTP su sw.js per aggiornamenti immediati
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith(`${path.sep}sw.js`) || filePath.endsWith('/sw.js')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+    }
+}));
 
 // Rotte API
 app.use('/api/distributori', distributoriRoutes);

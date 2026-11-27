@@ -1,7 +1,7 @@
 // ============================================
 // Service Worker — PWA Cache & Offline Shell
 // ============================================
-const CACHE_NAME = 'fuelmap-v35';
+const CACHE_NAME = 'fuelmap-v36';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -14,19 +14,10 @@ const STATIC_ASSETS = [
     '/icon.svg',
     '/icon-192.png',
     '/icon-512.png',
-    '/manifest.json',
-    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-    'https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.css',
-    'https://unpkg.com/maplibre-gl@5.7.3/dist/maplibre-gl.js',
-    'https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.1.4/leaflet-maplibre-gl.js',
-    'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css',
-    'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css',
-    'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js',
-    'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+    '/manifest.json'
 ];
 
-// Install: salva asset statici in cache (tollerante ad errori singoli su CDN)
+// Install: salva gli asset locali principali in cache
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
@@ -38,7 +29,7 @@ self.addEventListener('install', (event) => {
     self.skipWaiting();
 });
 
-// Activate: pulisce vecchie cache
+// Activate: pulisce tutte le vecchie cache (es. fuelmap-v35 e precedenti)
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((keys) => {
@@ -50,23 +41,22 @@ self.addEventListener('activate', (event) => {
     self.clients.claim();
 });
 
-// Fetch: Network-first per API, Cache-first per asset statici
+// Fetch: gestisce solo richieste same-origin GET per evitare blocchi CSP/CDN
 self.addEventListener('fetch', (event) => {
-    // Il Cache Storage supporta solo richieste GET: ignora POST, PUT, DELETE
     if (event.request.method !== 'GET') {
         return;
     }
 
     const url = new URL(event.request.url);
 
-    // Non mettere le tile dei provider mappa nella cache offline generica del service worker.
-    if (url.hostname === 'tile.openstreetmap.org' || url.hostname.endsWith('.tile.openstreetmap.org') ||
-        url.hostname === 'tiles.openfreemap.org' || url.hostname.endsWith('.tiles.openfreemap.org')) {
+    // Lascia gestire al browser le risorse di terze parti (CDN unpkg, MapLibre tiles, Analytics, font)
+    // evitando qualsiasi interferenza CSP o risposte opaque al refresh della pagina.
+    if (url.origin !== self.location.origin || url.pathname === '/sw.js') {
         return;
     }
 
-    // Le chiamate API e Supabase vanno sempre via rete (fallback offline gestito in IndexedDB)
-    if (url.pathname.startsWith('/api/') || url.hostname.includes('supabase.co')) {
+    // Le chiamate API vanno sempre via rete (fallback offline gestito in IndexedDB)
+    if (url.pathname.startsWith('/api/')) {
         event.respondWith(
             fetch(event.request).catch(() => {
                 return new Response(JSON.stringify({ errore: 'Offline - impossibile caricare dati' }), {
@@ -78,20 +68,27 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Asset statici: Network first con fallback su cache
+    // Asset statici same-origin: Network first con fallback sicuro su cache
     event.respondWith(
-        fetch(event.request).then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200 && event.request.method === 'GET') {
-                const clone = networkResponse.clone();
-                caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(event.request, clone);
-                });
-            }
-            return networkResponse;
-        }).catch(() => {
-            // Offline: usa la cache
-            return caches.match(event.request);
-        })
+        fetch(event.request)
+            .then((networkResponse) => {
+                if (networkResponse && networkResponse.ok && networkResponse.type === 'basic') {
+                    const clone = networkResponse.clone();
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(event.request, clone).catch(() => {});
+                    });
+                }
+                return networkResponse;
+            })
+            .catch(async () => {
+                const cached = await caches.match(event.request);
+                if (cached) return cached;
+                if (event.request.mode === 'navigate') {
+                    const fallbackPage = await caches.match('/index.html');
+                    if (fallbackPage) return fallbackPage;
+                }
+                return Response.error();
+            })
     );
 });
 
